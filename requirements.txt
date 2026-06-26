@@ -1,6 +1,10 @@
 # Core data / stats
-pandas
-numpy
+# numpy/pandas capped: pybaseball, nfl_data_py, nba_api are community libs that
+# lag the latest releases (no upper bounds of their own). numpy<2 avoids C-ABI
+# breakage; pandas<2.3 avoids the 3.0 API removals. Bump once the sport libs
+# officially support newer versions.
+pandas>=2.0,<2.3
+numpy>=1.26,<2.0
 statsmodels
 linearmodels
 
@@ -17,8 +21,5 @@ seaborn
 pyyaml
 jupyter
 
-# Paper rendering.
-# NOTE: the real Quarto is a standalone CLI (install via `brew install quarto`
-# or https://quarto.org), NOT this pip package. Kept here per project spec, but
-# rendering relies on the system `quarto` binary, not pip.
-quarto
+# Paper rendering uses the standalone Quarto CLI (`brew install quarto` or
+# https://quarto.org) — there is no pip package for it.

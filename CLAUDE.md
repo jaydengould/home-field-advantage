@@ -40,6 +40,32 @@ cross-sport comparison. Final output: a paper-quality Quarto write-up (PDF + HTM
 - `notebooks/` — exploration
 - `tests/`
 
+## Working convention
+
+**Update this CLAUDE.md at the end of each working session** — record decisions
+made, schema/config changes, and what's next. It's the memory that survives
+between sessions.
+
+## Next session — design walkthrough + brainstorming
+
+Before writing any loader/model code, walk through the full pipeline end to end
+and settle these design choices (they cascade into everything downstream):
+
+1. **Unified panel schema** — define the exact columns every `src/data/` loader
+   returns. Keystone: the "sport is a parameter" promise depends on this being
+   right and identical across MLB/NBA/NFL. One row per game.
+2. **Treatment definition** — 2020 crowds were partial/staggered (NFL admitted
+   some fans, varying by stadium/week). Decide: binary (empty vs. not) or
+   continuous (capacity %). Drives whether it's clean DiD or messier.
+3. **Comparison / control** — DiD against pre-2020 seasons? Synthetic control
+   per team? This shapes the whole `src/models/` design.
+4. **Confounders** — 2020 also changed schedules, travel/rest, and roster
+   availability (COVID absences). List the threats to "crowd caused it" before
+   modeling.
+
+Open prep: bring an opinion on #2 — it has the biggest research-design
+consequences.
+
 ## Status
 
 Scaffold only. Analysis logic, loaders, and models come in later sessions.
