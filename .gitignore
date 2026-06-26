@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Raw data — never commit downloaded data, keep the folders via .gitkeep
+data/raw/**
+!data/raw/
+!data/raw/**/
+!data/raw/**/.gitkeep
+
+# Interim/processed artifacts (optional: comment out to version processed data)
+data/interim/*
+!data/interim/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Results — regenerated from code
+results/figures/*
+!results/figures/.gitkeep
+results/tables/*
+!results/tables/.gitkeep
+
+# Quarto render output
+/_site/
+*.html
+*.pdf
+/.quarto/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
