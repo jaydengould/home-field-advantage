@@ -2,10 +2,14 @@
 
 ## Goal
 
-Estimate the **causal effect of crowd presence on home-team win probability**,
-using the 2020 empty-stadium COVID season as a natural experiment across MLB,
-NBA, and NFL. Each sport is analyzed separately, then combined into a
-cross-sport comparison. Final output: a paper-quality Quarto write-up (PDF + HTML).
+Two-part study across MLB, NBA, and NFL: (1) **quantify** home-field advantage
+descriptively (home win %, scoring margin) and (2) estimate the **causal
+crowd-attributable slice** of it, using the COVID empty/partial-stadium period
+(**full 2020–21 restriction window**) as a natural experiment. The modeled
+outcome is **scoring margin** (more statistical power), with **home win % reported
+alongside** as the intuitive number. Each sport is analyzed separately, then
+combined into a cross-sport comparison. Final output: a paper-quality Quarto
+write-up (PDF + HTML).
 
 ## Tech stack
 
@@ -42,30 +46,65 @@ cross-sport comparison. Final output: a paper-quality Quarto write-up (PDF + HTM
 
 ## Working convention
 
+**Be brutally honest.** This is a research project — a flattering wrong answer
+is worse than useless, it corrupts the conclusion. Push back when the user is
+wrong, name methodological flaws plainly, flag endogeneity/selection/sample-size
+problems even when unwelcome, and never agree just to be agreeable. Distinguish
+what the data can support from what it can't.
+
 **Update this CLAUDE.md at the end of each working session** — record decisions
 made, schema/config changes, and what's next. It's the memory that survives
 between sessions.
 
-## Next session — design walkthrough + brainstorming
+## Design decisions (settled 2026-06-29)
 
-Before writing any loader/model code, walk through the full pipeline end to end
-and settle these design choices (they cascade into everything downstream):
+Full design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
 
-1. **Unified panel schema** — define the exact columns every `src/data/` loader
-   returns. Keystone: the "sport is a parameter" promise depends on this being
-   right and identical across MLB/NBA/NFL. One row per game.
-2. **Treatment definition** — 2020 crowds were partial/staggered (NFL admitted
-   some fans, varying by stadium/week). Decide: binary (empty vs. not) or
-   continuous (capacity %). Drives whether it's clean DiD or messier.
-3. **Comparison / control** — DiD against pre-2020 seasons? Synthetic control
-   per team? This shapes the whole `src/models/` design.
-4. **Confounders** — 2020 also changed schedules, travel/rest, and roster
-   availability (COVID absences). List the threats to "crowd caused it" before
-   modeling.
+1. **Two-part question** — descriptive ("how big is HFA?", charts/numbers) +
+   causal ("how much is the crowd?"). The descriptive number makes the causal
+   number interpretable.
+2. **Treatment** — *continuous* crowd dose (`crowd_pct`), identified off
+   *policy capacity caps* over the *full 2020–21 restriction window* (not 2020
+   only). Endogenous historical attendance kept as a *labeled descriptive*
+   companion, never the causal headline.
+3. **Estimator** — TWFE panel (`home_margin ~ crowd_pct + controls + team_FE +
+   season_FE`) is the engine; a simple on/off 2×2 DiD is a back-pocket section;
+   synthetic control skipped as overkill. Outcome = scoring margin (power),
+   win% reported alongside (intuition).
+4. **Confounders** — team quality (→ Elo now, betting lines = TODO), rest,
+   travel, weather as controls. NBA bubble + relocated/neutral "home" games
+   flagged and EXCLUDED from the main model.
+5. **Bubble** — mined separately as a crowd-vs-travel *decomposition* + a
+   seeding-games *placebo*; never in the pooled model.
+6. **Schema** — ~25-column unified panel, one row per game, identical across
+   sports (sports null what doesn't apply). Sport logic only in `src/data/`.
 
-Open prep: bring an opinion on #2 — it has the biggest research-design
-consequences.
+## Implementation phasing
+
+Small, independently-runnable phases. NFL is the pilot sport (prove the vertical
+slice on one sport, then the others conform). Full detail per phase — including
+the "done when" check — is in the spec §8; this list is the quick reference.
+
+1. **Schema contract + config** — panel columns as a code validator + fill
+   `config/sports.yaml` with per-sport COVID windows.
+2. **Pilot loader (NFL) → panel** — one sport emitting the validated schema.
+3. **Remaining two loaders (MLB, NBA)** — conform to the proven contract.
+4. **Sport-blind features** — Elo, `crowd_pct`, rest, travel.
+5. **Descriptive HFA** — win% / margin by sport & season + figures (data sanity gate).
+6a. **Causal — TWFE dose-response** (the engine).
+6b. **Causal — back-pocket on/off DiD** (intuitive section + sanity check).
+7. **Bubble decomposition + placebo**.
+8. **Quarto write-up** → PDF + HTML.
+
+**How to build:** today's spec is the umbrella design, not a single build script.
+Run `writing-plans` + execution **per phase** (the spec is too big for one plan) —
+each phase is its own small spec→plan→build loop. Do NOT plan the whole project
+at once.
+
+**Next session:** run `writing-plans` for **Phase 1 only**, then execute it.
+No analysis code exists yet.
 
 ## Status
 
-Scaffold only. Analysis logic, loaders, and models come in later sessions.
+Design complete and approved. No analysis code yet — implementation begins
+Phase 1 next session.
