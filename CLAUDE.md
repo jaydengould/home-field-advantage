@@ -104,7 +104,62 @@ at once.
 **Next session:** run `writing-plans` for **Phase 1 only**, then execute it.
 No analysis code exists yet.
 
+## Pre-Phase-1 attendance spike (run 2026-06-29) — PASS
+
+Verified risk #1 (does the `crowd_pct` treatment variable exist?). **It does**,
+but **not where the spec assumed**. Findings:
+
+**Treatment source = ESPN public API, NOT nfl_data_py.**
+- `nfl_data_py` carries **zero** attendance — confirmed across all its
+  `import_*` functions. No attendance/capacity/crowd field anywhere.
+- Pro-Football-Reference *has* attendance but hard-`403`s every automated
+  request (Sports Reference blocks scrapers — curl and the fetch proxy both
+  blocked). Not a usable source here.
+- **ESPN summary endpoint works:**
+  `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=<ESPN_ID>`
+  → `gameInfo.attendance`. The `<ESPN_ID>` is already in the schedule
+  (`espn` column). So the NFL loader is: `import_schedules` → join attendance
+  via the `espn` id.
+- Sampled 2019/2020/2021: clean within-team dose ramp — 2019 full (~62–70k),
+  2020 staggered partial (15,895 / 10,166 / **0** / **0**), 2021 reopened
+  (~62–77k). Empty-stadium `0`s are **real zeros, not nulls**. This is exactly
+  the staggered-cap variation the TWFE engine identifies off.
+
+**Capacity is NOT in either API.** ESPN returns `gameInfo.venue.capacity =
+None`. Capacity is a static venue property → build a small `venue → capacity`
+lookup file. It rides on the same static lookup the spec already needs for
+Phase 4 travel coords (`venue → lat/long`). `crowd_pct = attendance / capacity`
+is then constructible.
+
+**Bonus — controls already free in `nfl_data_py.import_schedules`:** the schedule
+(269 rows for 2020) already supplies several columns the spec scheduled as later
+work. Full column list:
+`game_id, season, game_type, week, gameday, weekday, gametime, away_team,
+away_score, home_team, home_score, location, result, total, overtime,
+old_game_id, gsis, nfl_detail_id, pfr, pff, espn, ftn, away_rest, home_rest,
+away_moneyline, home_moneyline, spread_line, away_spread_odds, home_spread_odds,
+total_line, under_odds, over_odds, div_game, roof, surface, temp, wind, ...,
+referee, stadium_id, stadium`.
+- **`spread_line` = `closing_spread`** — the betting line the spec marked a
+  *future TODO* (§9) is available NOW for NFL, per game. Promote from TODO.
+- `home_rest`/`away_rest` → `home_rest_days`/`away_rest_days` directly.
+- `temp`/`wind` → weather columns; `roof` (`outdoors`/`dome`/`closed`) → `is_dome`.
+- `location` (`Home`/`Neutral`, 4 neutral games in 2020) → `neutral_site` flag.
+- `referee` present → enables the deferred crowd→referee mechanism sub-study (§9).
+- `result` = home_margin (home-perspective); `pfr`/`espn`/`gsis` are cross-source
+  join ids.
+
+**Build-time notes carried forward:**
+- `crowd_pct = 0` is a REAL value (empty stadium), not missing — validator and
+  feature code must not coerce empty games to null.
+- ESPN needs polite throttling + caching: cache raw responses to
+  `data/raw/nfl/` (immutable) so each game is fetched once.
+- Open question for MLB/NBA: confirm an equivalent ESPN summary endpoint
+  (`.../baseball/mlb/...`, `.../basketball/nba/...`) carries attendance before
+  Phase 3 — the nfl_data_py-lacks-attendance pattern may repeat per sport.
+
 ## Status
 
-Design complete and approved. No analysis code yet — implementation begins
-Phase 1 next session.
+Design approved. **Pre-Phase-1 spike PASSED** — `crowd_pct` is obtainable for
+NFL (ESPN attendance + static capacity lookup). No analysis code yet. Next:
+brainstorm + `writing-plans` for **Phase 1** (schema validator + `config/sports.yaml`).
