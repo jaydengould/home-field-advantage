@@ -1,2 +1,12 @@
-# Per-sport configuration: treatment dates (start of empty-stadium 2020 season)
-# and per-sport parameters. To be defined next session.
+# Per-sport COVID treatment window.
+#
+# covid_era seasons = the policy-restricted window where a reduced crowd_pct is
+# EXOGENOUS (forced by capacity caps, not chosen by fans). The continuous
+# per-game dose lives in crowd_pct; this only marks which seasons' crowd
+# variation we trust as causal. Season ints follow each data source's labeling.
+nfl:
+  treated_seasons: [2020]        # 2021 reopened to full capacity league-wide
+mlb:
+  treated_seasons: [2020, 2021]  # 2020 ~empty, 2021 staggered reopen — confirm in Phase 3
+nba:
+  treated_seasons: [2020, 2021]  # 2020-21 empty/limited; bubble via is_bubble — confirm in Phase 3

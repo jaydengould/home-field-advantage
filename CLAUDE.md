@@ -158,8 +158,62 @@ referee, stadium_id, stadium`.
   (`.../baseball/mlb/...`, `.../basketball/nba/...`) carries attendance before
   Phase 3 — the nfl_data_py-lacks-attendance pattern may repeat per sport.
 
+## Phase 1 — schema contract + config (done 2026-06-29) — COMPLETE
+
+Brainstormed → spec → plan → built via subagent-driven development. 15/15 tests
+passing. **Git is user-owned — never run git commit/push/branch; the user
+commits their own history.**
+
+**Built:**
+- `src/schema.py` — the unified panel contract. `Col` spec dataclass +
+  `COLUMNS` dict (29 columns, test-locked) + `validate(df)`. Sport-blind,
+  config-free (no YAML import). Imported by everything downstream.
+- `tests/test_schema.py` (13 tests), `tests/test_config.py` (2 tests).
+- `config/sports.yaml` — `treated_seasons` per sport.
+- `pyproject.toml` — pytest `pythonpath = ["."]` (so `from src.schema import …`
+  resolves; `src/` is a namespace package, no `__init__.py`).
+- Specs/plans under `docs/superpowers/{specs,plans}/2026-06-29-phase1-*`.
+
+**Design decisions settled this phase:**
+- **Validator = hand-rolled** (`Col` + `validate()`), not pandera/pydantic — no
+  new dependency, the spec doubles as documentation.
+- **`validate()` collects ALL violations** into one `ValueError` (not fail-fast)
+  — faster to debug a data panel.
+- **Strictness = structural + domain + conditional.** Conditional rules:
+  `home_margin == home_score - away_score`; `crowd_pct ≈ attendance/capacity`
+  (`crowd_pct == 0` stays valid); `home_win` matches margin sign, null only on
+  ties; **`is_dome ⇒ weather null` (forward only)**.
+- **Weather rule is one-directional** — dome⇒null is a hard error; outdoor⇒
+  weather-present is NOT enforced (sources legitimately lack weather; `roof` is
+  three-state incl. `closed` retractable). Reverse rule would cry wolf.
+- **Nullable extension dtypes** for the 3 nullable int/bool columns (`home_win`
+  → `boolean`; `home_rest_days`/`away_rest_days` → `Int64`) so a null doesn't
+  silently upcast int→float and break the dtype contract. `Col` is hashable
+  (`values` is a `frozenset`).
+- **`covid_era` = treated-season set, not a date window.** Reopening was
+  per-team-per-week (state policy), so a per-sport date is false precision;
+  `crowd_pct` already carries the exact per-game dose. `covid_era`'s real job is
+  to mark which crowd variation is **policy-driven (exogenous)** vs
+  demand-driven (endogenous). It stays config-free in `validate()`; the *loader*
+  sets it from `config/sports.yaml`.
+
+**Deferred / open items (carry forward):**
+- **Phase 6a open decision (important):** does the causal model **restrict the
+  sample** to COVID-window games (+ pre-COVID baseline) or **pool all seasons**
+  and lean on FE? Different estimates — matters because normal-season `crowd_pct`
+  is endogenous (bad teams draw small crowds *and* lose). Decide explicitly in 6a.
+- **Phase 3 confirm:** MLB/NBA `treated_seasons` are best-effort placeholders;
+  confirm exact season labeling + that ESPN's summary endpoint carries
+  attendance for baseball/basketball before building those loaders.
+- **Add `pytest` to `requirements.txt`** (or a dev-requirements) — it was missing
+  from the venv and installed ad hoc during Phase 1.
+- Two trivial code Minors left as-is (dead `notna()` guards in the `crowd_pct`
+  check; one uncovered-but-correct edge case for decided-game + null `home_win`).
+
 ## Status
 
-Design approved. **Pre-Phase-1 spike PASSED** — `crowd_pct` is obtainable for
-NFL (ESPN attendance + static capacity lookup). No analysis code yet. Next:
-brainstorm + `writing-plans` for **Phase 1** (schema validator + `config/sports.yaml`).
+**Phase 1 COMPLETE** (schema validator + config, 15/15 tests). Next: **Phase 2 —
+NFL pilot loader** (the first real consumer of `validate()`): `import_schedules`
+→ join ESPN attendance via the `espn` id → build `venue → capacity` lookup →
+emit the validated panel to `data/interim/`. Run brainstorm + `writing-plans`
+for Phase 2.
