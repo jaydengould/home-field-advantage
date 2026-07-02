@@ -17,3 +17,11 @@ def test_config_has_three_sports_with_treated_seasons():
 def test_nfl_treated_seasons_is_2020_only():
     cfg = yaml.safe_load(CONFIG.read_text())
     assert cfg["nfl"]["treated_seasons"] == [2020]
+
+
+def test_nfl_load_seasons():
+    import yaml
+    cfg = yaml.safe_load(open("config/sports.yaml"))
+    lo, hi = cfg["nfl"]["load_seasons"]
+    assert lo == 2018 and hi == 2023
+    assert lo <= hi

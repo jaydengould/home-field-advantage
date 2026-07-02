@@ -210,10 +210,51 @@ commits their own history.**
 - Two trivial code Minors left as-is (dead `notna()` guards in the `crowd_pct`
   check; one uncovered-but-correct edge case for decided-game + null `home_win`).
 
+## Phase 2 — NFL pilot loader (done 2026-07-02) — COMPLETE
+
+Brainstorm → spec → plan → subagent-driven build. `src/data/nfl.py` emits the
+validated 29-col panel for 2018–2023 to `data/interim/nfl.parquet` (1657 games,
+0 dropped). 28/28 tests. Specs/plans under `docs/superpowers/{specs,plans}/2026-07-02-phase2-*`.
+
+**Built (`src/data/nfl.py`):**
+- `_build_panel(schedule, attendance, capacity, treated_seasons)` — pure transform
+  (no net/disk); maps schedule → 29 schema cols → `validate()`. `capacity` keyed by
+  `(stadium_id, season)`.
+- `_fetch_attendance(espn_id)` — cached ESPN summary-endpoint fetch → `data/raw/nfl/espn/<id>.json` (immutable, write-once).
+- `_derive_capacity(df, treated_seasons)` — **empirical full-house reference** (see below).
+- `_check_coverage(miss, total)` — hard-fail if >5% of a season's games lack attendance.
+- `load(seasons, treated_seasons)` → `(panel, dropped)`; `main(smoke)` + `--smoke` CLI.
+
+**Key decisions settled this phase:**
+- **Season range = config param `nfl.load_seasons: [2018, 2023]`.** Elo needs only
+  ~1–2 seasons burn-in (it self-regresses); 2022–2023 are the **post-COVID reversion
+  anchors** (asymmetric check: reversion corroborates, non-reversion is ambiguous).
+- **Elo bridge = neutral prior 1500.0**, `away_travel_km` = null (both Phase-4 placeholders);
+  the interim panel still passes the *full* `validate()` — one gate, no schema change.
+- **crowd dose = EMPIRICAL capacity (Option A), NOT seated capacity.** ESPN attendance
+  is *announced* (tickets distributed) and exceeds seated capacity for most stadiums
+  (Dallas ~93k in an 80k stadium; ~60% of games over seated cap) — a units mismatch.
+  No public turnstile source exists. So `capacity[stadium, season]` = that stadium-season's
+  **max announced attendance** (self-calibrating full house); **treated seasons borrow**
+  the stadium's non-treated max (suppression decided from `treated_seasons`, NOT a
+  magnitude threshold — the magnitude guess would misfire on MLB/NBA 2021 partial
+  reopenings). `crowd_pct = attendance/capacity` ∈ [0, 1.0]. Removed the hand-built
+  seated-capacity yaml.
+- **espn-id bug fixed:** the `espn` col is `float64`; must `dropna` then
+  `.astype("int64").astype(str)` or the ".0" suffix 400s the ESPN URL.
+
+**Result sanity (the natural experiment, visible in the raw dose):** `crowd_pct` mean
+by season = 2018:.97, 2019:.97, **2020:.066**, 2021:.97, 2022:.98, 2023:.98. 154 empty
+(crowd_pct==0) games. Clean before→during→after.
+
+**Deferred Minors (for Phase 3 / polish):** `stadium_id.astype(str)` maps null→"nan";
+`is_playoff = game_type!="REG"` assumes no preseason rows; a few cosmetic test-style items.
+
 ## Status
 
-**Phase 1 COMPLETE** (schema validator + config, 15/15 tests). Next: **Phase 2 —
-NFL pilot loader** (the first real consumer of `validate()`): `import_schedules`
-→ join ESPN attendance via the `espn` id → build `venue → capacity` lookup →
-emit the validated panel to `data/interim/`. Run brainstorm + `writing-plans`
-for Phase 2.
+**Phase 2 COMPLETE** (NFL loader → `data/interim/nfl.parquet`, 28/28 tests). All Phase-2
+changes are **uncommitted in the working tree awaiting the user's commit** (git is
+user-owned). Next: **Phase 3 — MLB + NBA loaders** conform to the proven contract.
+Confirm before building: MLB/NBA `treated_seasons` labeling + that ESPN's summary
+endpoint carries attendance for baseball/basketball (the announced-vs-seated + Option-A
+capacity finding likely repeats per sport). Run brainstorm + `writing-plans` for Phase 3.

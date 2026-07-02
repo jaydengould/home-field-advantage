@@ -13,6 +13,11 @@ pybaseball
 nba_api
 nfl_data_py
 
+# Fetch + parquet + tests
+requests
+pyarrow
+pytest
+
 # Viz
 matplotlib
 seaborn
