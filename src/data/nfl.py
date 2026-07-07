@@ -23,6 +23,11 @@ import yaml
 
 from src.schema import COLUMNS, validate
 
+# derive_capacity/check_coverage now live in _espn.py (shared with MLB/NBA) so all
+# sports compute crowd_pct identically. Keep the old private names for local use.
+from src.data._espn import derive_capacity as _derive_capacity
+from src.data._espn import check_coverage as _check_coverage
+
 RAW_DIR = Path("data/raw/nfl/espn")
 INTERIM = Path("data/interim/nfl.parquet")
 CONFIG_FILE = Path("config/sports.yaml")
@@ -97,48 +102,6 @@ def _build_panel(schedule: pd.DataFrame, attendance: dict, capacity: dict,
     panel = panel[list(COLUMNS)]
     validate(panel)
     return panel
-
-
-def _derive_capacity(df: pd.DataFrame, treated_seasons: list) -> dict:
-    """Empirical full-house reference per (stadium_id, season). A NORMAL season
-    self-references its own MAX announced attendance; a TREATED (COVID-restricted)
-    season borrows the stadium's max over its non-treated seasons, since a
-    capacity-capped season's own attendance is not a valid full house.
-
-    Suppression is decided from config's `treated_seasons`, NOT a magnitude guess:
-    a threshold like "< 50% of all-time max" happens to work for NFL 2020 (all
-    clubs capped well below half) but would misfire for MLB/NBA, whose 2021 partial
-    reopenings can exceed any such threshold and would then self-reference — silently
-    erasing the crowd dose. Keying off the known treated set keeps it principled.
-
-    Requires an `attendance` column. Returns {(stadium_id, season): capacity_int>=1}."""
-    treated = set(treated_seasons)
-    d = df[["stadium_id", "season", "attendance"]].dropna(subset=["attendance"]).copy()
-    d["stadium_id"] = d["stadium_id"].astype(str)
-    d["season"] = d["season"].astype(int)
-    d["attendance"] = d["attendance"].astype(int)
-
-    ref: dict = {}
-    for sid, sub in d.groupby("stadium_id"):
-        season_max = sub.groupby("season")["attendance"].max()
-        normal = season_max[~season_max.index.isin(treated)]
-        # fallback: normal full house; if the stadium is only ever seen in treated
-        # seasons, fall back to its own overall max (then floored to >=1 below).
-        fallback = int(normal.max()) if len(normal) else int(season_max.max())
-        for season, smax in season_max.items():
-            cap = fallback if int(season) in treated else int(smax)
-            ref[(sid, int(season))] = max(cap, 1)  # schema needs capacity>=1; guards all-zero stadium
-    return ref
-
-
-def _check_coverage(miss: dict, total: dict) -> None:
-    """Hard-fail if any season lost >5% of its played games to missing attendance
-    (a signal that ESPN coverage broke rather than a stray game)."""
-    for season, m in miss.items():
-        if m / total[season] > 0.05:
-            raise ValueError(
-                f"season {season}: {m}/{total[season]} ({m / total[season]:.0%}) "
-                f"games missing attendance (>5%) — ESPN coverage broke")
 
 
 def _fetch_attendance(espn_id: str, throttle: float = 0.7) -> int | None:

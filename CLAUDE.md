@@ -250,11 +250,139 @@ by season = 2018:.97, 2019:.97, **2020:.066**, 2021:.97, 2022:.98, 2023:.98. 154
 **Deferred Minors (for Phase 3 / polish):** `stadium_id.astype(str)` maps null→"nan";
 `is_playoff = game_type!="REG"` assumes no preseason rows; a few cosmetic test-style items.
 
+## Phase 3 carry-forward (read before starting)
+
+- **Spike attendance FIRST, before any build** (repeat the pre-Phase-1 NFL spike per sport):
+  does `pybaseball`/`nba_api` carry attendance? Does ESPN's `.../baseball/mlb/` and
+  `.../basketball/nba/` summary endpoint expose `gameInfo.attendance`? Don't build until confirmed.
+- **The join key is the likely sticking point.** NFL had an `espn` game id free in the
+  schedule. MLB/NBA sources probably won't — expect to map games to ESPN ids via date+teams
+  or ESPN's own schedule. This is the part most likely to differ from NFL.
+- **Reuse, don't re-derive:** `_fetch_attendance` (cached ESPN fetch), `_derive_capacity`
+  (Option A, suppression keyed off `treated_seasons`), and `_check_coverage` in
+  `src/data/nfl.py` are the templates. The spec deferred extracting a shared ESPN helper to
+  "when the 2nd consumer arrives" — that's now. Consider `src/data/_espn.py`.
+- **Sport edge cases:** NBA always indoor (`is_dome=True`, weather null everywhere) + the
+  **2020 Orlando bubble** (`is_bubble=True`, excluded from pooled model, mined in Phase 7);
+  NBA seasons span two calendar years so `treated_seasons` labeling needs care. MLB: 2020
+  Blue Jays "home" games in Buffalo (`relocated_home`/`neutral_site`), retractable roofs,
+  doubleheaders, 81 home games (rich within-season attendance → Option A works well).
+- **Data files are gitignored (local cache only).** `data/raw/nfl/espn/*.json` (1657 files)
+  and `data/interim/nfl.parquet` are NOT in git — decided to keep the repo's original
+  "never commit downloaded data" principle. A fresh clone re-fetches from ESPN; the local
+  cache is the only copy, so don't `git clean -fdx` it away. Deferred code Minors are logged
+  in `.superpowers/sdd/progress.md` (Phase 2 section).
+
+## Phase 3 attendance spike (run 2026-07-07) — PASS, flips an assumption
+
+Verified attendance source + join key for MLB and NBA. **Result: all three sports
+go single-source on ESPN; the native packages (`pybaseball`/`nba_api`) are out.**
+
+**Attendance source per sport:**
+- **ESPN `baseball/mlb` summary** — ✅ `gameInfo.attendance`. Dose ramp: 2019 full
+  (22320) → **2020 empty = 0 (a REAL zero)** → 2021 partial (17804).
+- **ESPN `basketball/nba` summary** — ✅ present. 2019 (15388) → 2020 bubble (0) →
+  2021 partial (1773).
+- **`pybaseball.schedule_and_record`** — ❌ *has* an `Attendance` column BUT
+  baseball-reference marks 2020 empty-stadium games "Unknown" → **`NaN`, not `0`**.
+  That nulls exactly the treatment games and destroys the dose signal. Rejected.
+- **`nba_api` BoxScoreSummaryV2** — ❌ `GameInfo.ATTENDANCE = None` even for a normal
+  2019 game. Rejected. (The "nfl_data_py-lacks-attendance" pattern repeats.)
+
+**The join-key worry is GONE.** ESPN's scoreboard-by-date endpoint
+(`.../{sport}/scoreboard?dates=YYYYMMDD`) already returns the full day's game list:
+event id, home/away teams+abbrevs, scores, venue, `neutralSite`, status. So the
+architecture is **ESPN scoreboard (schedule/scores) + ESPN summary (attendance),
+keyed by ESPN event id — no cross-source date+team join.** Simpler than NFL's
+two-source approach. Iterate season dates (~180 MLB, ~170 NBA); cache every response.
+
+**Decision: extract `src/data/_espn.py`** (shared cached fetch + scoreboard walk) —
+2nd + 3rd consumers have arrived. `_derive_capacity` (Option A) and `_check_coverage`
+carry over unchanged. Capacity is `None` in ESPN for both sports (same as NFL) → Option A.
+
+**Rest/travel/Elo stay null at load** (Phase 4 fills them, exactly as NFL). ESPN
+scoreboard doesn't carry them and they're computed sport-blind downstream anyway.
+
+**Edge cases confirmed (must handle in the build):**
+- **NBA bubble** — venue `"ESPN Wide World of Sports Complex"`, att=0, but ESPN says
+  `neutralSite=False`. `is_bubble` must be a **date+venue flag** (Orlando, post-2020-07-30),
+  NOT ESPN's neutral flag.
+- **MLB relocated home** (TOR→Buffalo 2020) — ESPN venue name = the field actually played
+  in; detect `relocated_home`/`neutral_site` via venue-mismatch, not ESPN's neutral flag.
+
+## Phase 3 — MLB loader + shared `_espn.py` (done 2026-07-07) — COMPLETE
+
+Brainstorm → spec → plan → subagent-driven build (5 tasks, per-task reviews + a
+whole-branch final review = READY TO MERGE). Specs/plans under
+`docs/superpowers/{specs,plans}/2026-07-07-phase3-mlb-*`. **48/48 tests. Real-data
+smoke passes** (dose signal confirmed on live ESPN). Git is user-owned — all changes
+sit uncommitted in the working tree awaiting the human commit.
+
+**Built:**
+- `src/data/_espn.py` — the shared, sport-agnostic ESPN layer: `fetch_summary(sport,
+  event_id)` (cached summary→attendance), `walk_scoreboard(sport, start, end)`
+  (scoreboard-by-date → normalized event dicts), and `derive_capacity`/`check_coverage`
+  **moved verbatim from `nfl.py`** (single implementation → all sports compute
+  `crowd_pct` identically). A shared `_cached_get(cache, url, throttle)` underlies both
+  fetchers with **retry + capped backoff + jitter** (see robustness note).
+- `src/data/mlb.py` — thin sport glue: `_select_games` (keep `season_type∈{2,3}`, drop
+  preseason/all-star/unplayed) + `_build_panel` (→ validated 29-col panel) + `load`/`main`.
+- `src/data/nfl.py` — **minimal edit**: aliases `derive_capacity`/`check_coverage` from
+  `_espn.py` under their old private names; keeps its own `_fetch_attendance`. NFL
+  behavior byte-identical; its 28 tests stayed green (verified in the final review).
+- `config/sports.yaml` — `mlb.load_seasons: [2018, 2023]`, `treated_seasons: [2020, 2021]`.
+- Tests: `tests/test_espn.py`, `tests/test_mlb_loader.py`.
+
+**Decisions settled this phase (build):**
+- **Single-source ESPN for MLB** (scoreboard + summary, keyed by event id) — the native
+  packages are out (spike). No cross-source join.
+- **No weather for MLB** — not a confounder of a policy-identified, margin-outcome crowd
+  estimate (weather ⊥ COVID caps; symmetric on margin; the demand→attendance channel is
+  mediation, not confounding). `temp_f/wind_mph/precip` null; `is_dome` True only for the
+  one permanent dome (Tropicana venue id "31"), retractables→False (documented
+  approximation, inert since weather is null).
+- **MLB quality control = Elo** (Phase 4). `closing_spread` null — baseball is a
+  *moneyline* sport with no meaningful point spread; a market signal (moneyline→win-prob)
+  is a deferred optional feature, NOT the `closing_spread` column.
+- **Relocated home** = hardcoded `(TOR, 2020)` (Buffalo); neutral special events not
+  enumerated (option 4a) — `neutral_site` taken from ESPN's flag for free.
+- Rest/travel/Elo = null/1500.0 placeholders (Phase 4), exactly as NFL.
+
+**Robustness (learned from the real pull — NOT in the original plan):** MLB is ~2430
+games/season, so a full pull is thousands of ESPN requests and ESPN **soft-rate-limits
+sustained bulk fetching** (transient 502s; verified the endpoints are fine in isolation).
+Added: (1) `_cached_get` retry with capped backoff + jitter (6 attempts); (2)
+`fetch_summary` **swallows a persistent fetch failure → returns None** (counted as
+missing attendance; the >5% coverage gate guards systemic loss) so one unlucky game can't
+abort a 3300-game pull. `_fetch_scoreboard` stays **fail-loud** (a lost date is
+unaccounted data loss). Cache is immutable/write-once, so a pull is self-completing across
+cache-warm re-runs. **A full `[2018,2023]` pull takes ~hours cold** and may need a couple
+re-runs to fully warm the cache — run `python -m src.data.mlb` to write
+`data/interim/mlb.parquet` (not yet generated).
+
+**Globe Life Field capacity note (important for interpreting output):** Option A borrows a
+treated season's capacity from the venue's *non-treated* seasons. This is correct ONLY if
+every venue has a non-treated season in the load window. The full config window
+`[2018,2023]` satisfies this (2018/19/22/23 non-treated). But a venue that *opened in a
+treated year* — Globe Life Field (2020, the MLB 2020 postseason bubble site) — is anchored
+only by 2022/23, so a **narrow window that omits 2022/23 makes its `crowd_pct` spuriously
+~1.0** (fallback to own max). This surfaced in the 2-season smoke and is why the smoke
+asserts on **regular-season 2020 (all-empty, `crowd_pct==0`)** rather than a global max.
+Bonus finding: **ESPN's `neutralSite` flag DID correctly mark the MLB 2020 bubble** (unlike
+the NBA bubble) → those games carry `neutral_site=True` and drop out of the main model.
+
+**Deferred Minors (final-review triaged, all acceptable):** NFL-side `derive_capacity`/
+`check_coverage` tests now duplicate `test_espn.py` (retire NFL copies later);
+`fetch_summary` AttributeError if ESPN ever emits `"gameInfo": null` (it doesn't);
+`walk_scoreboard` `["team"]`/`str(None)`→"None" fragility (matches Phase-2 convention);
+one untested skip branch; trivial doubleheader test; `load()` lacks type annotations.
+
 ## Status
 
-**Phase 2 COMPLETE** (NFL loader → `data/interim/nfl.parquet`, 28/28 tests). All Phase-2
-changes are **uncommitted in the working tree awaiting the user's commit** (git is
-user-owned). Next: **Phase 3 — MLB + NBA loaders** conform to the proven contract.
-Confirm before building: MLB/NBA `treated_seasons` labeling + that ESPN's summary
-endpoint carries attendance for baseball/basketball (the announced-vs-seated + Option-A
-capacity finding likely repeats per sport). Run brainstorm + `writing-plans` for Phase 3.
+**Phase 3 (MLB) COMPLETE** — MLB loader + shared `src/data/_espn.py`, 48/48 tests,
+real-data smoke passes, final review READY TO MERGE, uncommitted awaiting human commit.
+The `data/interim/mlb.parquet` full write is not yet run (long ESPN pull; run
+`python -m src.data.mlb`). Next: **Phase 3 (NBA) loader** conforms to the same
+`_espn.py` contract — its extras: 2020 Orlando bubble (`is_bubble` via **date+venue**,
+since ESPN's neutral flag was False there), all-indoor (`is_dome=True`, weather null),
+two-calendar-year season labeling. Brainstorm → `writing-plans` → build.

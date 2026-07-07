@@ -9,5 +9,6 @@ nfl:
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
 mlb:
   treated_seasons: [2020, 2021]  # 2020 ~empty, 2021 staggered reopen — confirm in Phase 3
+  load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
 nba:
   treated_seasons: [2020, 2021]  # 2020-21 empty/limited; bubble via is_bubble — confirm in Phase 3

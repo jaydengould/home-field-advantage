@@ -1,7 +1,44 @@
 # home-field-advantage — research design
 
 **Date:** 2026-06-29
-**Status:** Approved design (pre-implementation)
+**Status:** Approved design. Core design intact through Phase 3 (MLB); a handful of
+implementation specifics were superseded — see **Amendments** below. CLAUDE.md is the
+authoritative living record; each phase also has its own spec under `docs/superpowers/`.
+
+## Amendments since approval
+
+The research design below — questions, TWFE estimator, confounder *logic*, bubble
+decomposition, deliverables, phasing — stands as written. These specifics were superseded
+during Phases 1–3 and are recorded here so the doc doesn't mislead:
+
+- **Data source (§8, §9): single-source ESPN for all three sports**, not the per-sport
+  sources named here (Retrosheet/pybaseball for MLB, Basketball-Ref for NBA). Spikes showed
+  the native packages lack usable attendance — `pybaseball` nulls the 2020 empties,
+  `nba_api` returns `None`. ESPN's summary endpoint carries `gameInfo.attendance` for all
+  three (a real `0` for empty games), keyed by ESPN event id via the scoreboard endpoint.
+  Shared loader helper: `src/data/_espn.py`.
+- **Capacity (§6): empirical "full-house" (Option A), not literal "venue full capacity."**
+  ESPN reports *announced* attendance (which exceeds seated capacity) and no turnstile
+  source exists, so `capacity[stadium, season]` = that stadium-season's max announced
+  attendance; treated (2020–21) seasons **borrow their non-treated max** (a capped season is
+  never its own capacity). `crowd_pct = attendance/capacity ∈ [0, ~1]`. Caveat: this needs a
+  non-treated season per venue in the load window — a park that opened in a treated year
+  (Globe Life Field, 2020) is anchored only by 2022–23.
+- **Weather (§4): not captured for MLB.** Weather is *not* a confounder of a
+  policy-identified crowd estimate on a *margin* outcome (weather ⊥ COVID caps; roughly
+  symmetric across both teams so it barely moves the margin; the demand→attendance channel
+  is mediation, not confounding). NFL keeps weather (free in its schedule); MLB nulls it;
+  NBA is indoor. The weather columns stay in the schema (nullable).
+- **`closing_spread` (§4, §9): NFL only.** It's free in the NFL schedule, but baseball is a
+  *moneyline* sport with no meaningful point spread, so MLB nulls it and controls team
+  quality via Elo. A moneyline→win-probability signal is a deferred optional feature, not
+  this column.
+- **`covid_era` (§2, §6): a treated-season set, not a date window.** Reopening was
+  per-team-per-week (local policy), so a per-sport date is false precision; `crowd_pct`
+  already carries the exact per-game dose. `covid_era` just marks policy-driven (exogenous)
+  vs demand-driven variation.
+
+---
 
 ## 1. Research question (two-part)
 
