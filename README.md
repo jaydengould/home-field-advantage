@@ -11,7 +11,7 @@ paper-quality write-up rendered via Quarto (PDF + HTML).
 
 Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
 
-**Status: in development — Phases 1–2 complete, Phase 3 in progress (MLB done, NBA next). 48/48 tests.**
+**Status: in development — Phases 1–3 complete (all three loaders build validated panels). Phase 4 (features) next. 65/65 tests.**
 
 ## Progress
 
@@ -35,8 +35,19 @@ Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
   scoreboard-by-date walk, and the Option-A capacity/coverage helpers, now shared so all
   sports compute `crowd_pct` identically). No weather for MLB (not a confounder of a
   policy-identified margin estimate); quality controlled via Elo (baseball has no point
-  spread). Real-data smoke confirms the 2020 dose: **regular season 100% empty**. NBA
-  loader is next.
+  spread). → `data/interim/mlb.parquet` (2018–2023, 13,277 games, 0 dropped). `crowd_pct`
+  mean by season: `.66 .65 .004 .44 .63 .68` — empty 2020, partial-reopening 2021.
+- ✅ **Phase 3 (NBA)** — NBA loader on the same `_espn.py` contract → `data/interim/nba.parquet`
+  (2018–2023, 7,571 games, 0 dropped). All-indoor (`is_dome=True`, weather null); the
+  **2020 Orlando bubble** (171 games) is flagged via venue+season (`is_bubble`) and excluded
+  from the pooled model but kept for the Phase-7 decomposition; TOR's 2021 Tampa relocation
+  flagged. `crowd_pct` mean by season: `.94 .93 .79 .124 .89 .94` — **2021 (0.124) is the
+  strongest treatment signal of the three sports** (2020's 0.79 is a mix of full pre-March
+  games + the empty bubble, which is why only 2021 is treated).
+- ✅ **Capacity fix (all sports)** — a treated season's capacity is `max(non-treated
+  fallback, that season's own max)`, so a genuinely reopened full house (e.g. the 2021 Rays
+  ALDS after caps lifted) isn't under-anchored into a `crowd_pct > 1`. Preserves the
+  anti-inflation intent (a suppressed season never lowers capacity); no-op for NFL.
 
 ## Roadmap (working, subject to change)
 
@@ -47,8 +58,8 @@ NFL is the pilot — prove the vertical slice on one sport, then the others conf
 |---|---|---|
 | 1 | Schema contract validator + `config/sports.yaml` | ✅ done |
 | 2 | NFL pilot loader → validated panel (ESPN attendance + empirical Option-A capacity) | ✅ done |
-| 3 | MLB + NBA loaders conform to the contract (on shared `src/data/_espn.py`) | 🔨 MLB done, NBA next |
-| 4 | Sport-blind features — Elo, `crowd_pct`, rest, travel | |
+| 3 | MLB + NBA loaders conform to the contract (on shared `src/data/_espn.py`) | ✅ done |
+| 4 | Sport-blind features — Elo, `crowd_pct`, rest, travel | ⬅ next |
 | 5 | Descriptive HFA (win% / margin by sport & season) — data sanity gate | |
 | 6a | Causal — TWFE dose-response (the engine) | |
 | 6b | Causal — back-pocket on/off DiD (intuitive sanity check) | |
@@ -83,12 +94,15 @@ Downloaded data is gitignored — a fresh clone re-fetches.
 
 ```bash
 .venv/bin/python -m src.data.nfl              # → data/interim/nfl.parquet
-.venv/bin/python -m src.data.mlb --smoke      # quick 2019+2020 dose check
-.venv/bin/python -m src.data.mlb              # → data/interim/mlb.parquet (long: see note)
+.venv/bin/python -m src.data.mlb              # → data/interim/mlb.parquet   (long: see note)
+.venv/bin/python -m src.data.nba              # → data/interim/nba.parquet   (long: see note)
+.venv/bin/python -m src.data.mlb --smoke      # quick real-data dose check, no parquet write
+.venv/bin/python -m src.data.nba --smoke      # quick 2020+2021 dose check (bubble + reopening ramp)
 ```
 
-**Note on MLB:** ~2,430 games/season means a full pull is thousands of ESPN requests,
-and ESPN soft-rate-limits sustained fetching (transient 502s). The loader retries with
-backoff and tolerates the rare unlucky game (counted as missing; a >5% coverage gate
-guards systemic loss), so a cold full pull takes ~hours and may need a couple cache-warm
-re-runs to complete. The cache persists, so subsequent runs are fast.
+**Note on the long pulls (MLB ~14.5k games, NBA ~7.9k):** a full pull is thousands of
+ESPN requests, and ESPN soft-rate-limits sustained fetching (transient 502s). The loader
+retries with backoff and tolerates the rare unlucky game (counted as missing; a >5%
+coverage gate guards systemic loss), so a cold full pull takes ~hours and may need a few
+cache-warm re-runs to complete. The cache is immutable/write-once, so each re-run resumes
+where it left off and subsequent runs are fast.

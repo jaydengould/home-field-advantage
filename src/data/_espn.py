@@ -58,7 +58,11 @@ def derive_capacity(df, treated_seasons: list) -> dict:
     """Empirical full-house reference per (stadium_id, season). A NORMAL season
     self-references its own MAX announced attendance; a TREATED (COVID-restricted)
     season borrows the stadium's max over its non-treated seasons, since a
-    capacity-capped season's own attendance is not a valid full house.
+    capacity-capped season's own attendance is not a valid full house — UNLESS the
+    treated season's own max exceeds that borrowed anchor (a genuinely reopened
+    full house, e.g. a late-2021 playoff after caps lifted), in which case the real
+    observation wins. max() keeps the anti-inflation intent (a suppressed season
+    never lowers capacity) while not under-anchoring a real full house.
 
     Suppression is decided from `treated_seasons`, NOT a magnitude guess.
     Requires an `attendance` column. Returns {(stadium_id, season): capacity_int>=1}."""
@@ -74,7 +78,7 @@ def derive_capacity(df, treated_seasons: list) -> dict:
         normal = season_max[~season_max.index.isin(treated)]
         fallback = int(normal.max()) if len(normal) else int(season_max.max())
         for season, smax in season_max.items():
-            cap = fallback if int(season) in treated else int(smax)
+            cap = max(fallback, int(smax)) if int(season) in treated else int(smax)
             ref[(sid, int(season))] = max(cap, 1)
     return ref
 

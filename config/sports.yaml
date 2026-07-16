@@ -11,4 +11,7 @@ mlb:
   treated_seasons: [2020, 2021]  # 2020 ~empty, 2021 staggered reopen — confirm in Phase 3
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
 nba:
-  treated_seasons: [2020, 2021]  # 2020-21 empty/limited; bubble via is_bubble — confirm in Phase 3
+  load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
+  treated_seasons: [2021]        # only 2020-21 (season 2021) is the empty->partial reopening;
+                                 # season 2020's non-bubble games are full-crowd pre-COVID, and
+                                 # its empty games are the Orlando bubble (excluded via is_bubble)

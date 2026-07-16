@@ -29,6 +29,20 @@ def test_derive_capacity_only_treated_falls_back_to_own_max():
     assert cap[("B", 2020)] == 12000  # own max fallback, floored >= 1
 
 
+def test_derive_capacity_treated_own_max_wins_when_it_exceeds_borrow():
+    # Reopened full house in a treated season (37616, e.g. late-2021 playoff after
+    # caps lifted) that exceeds the non-treated anchor (32251) must win -> crowd_pct
+    # stays <= 1.0. Suppression intent preserved: the low 2020 games never lower it.
+    df = pd.DataFrame({
+        "stadium_id": ["T", "T", "T"],
+        "season":     [2019, 2020, 2021],
+        "attendance": [32251, 0, 37616],
+    })
+    cap = derive_capacity(df, treated_seasons=[2020, 2021])
+    assert cap[("T", 2021)] == 37616   # own real full house wins over 32251 borrow
+    assert cap[("T", 2020)] == 32251   # suppressed season still borrows (no-op)
+
+
 def test_check_coverage_trips_above_5pct():
     check_coverage({2019: 1}, {2019: 100})       # 1% -> fine
     with pytest.raises(ValueError):

@@ -377,12 +377,61 @@ the NBA bubble) → those games carry `neutral_site=True` and drop out of the ma
 `walk_scoreboard` `["team"]`/`str(None)`→"None" fragility (matches Phase-2 convention);
 one untested skip branch; trivial doubleheader test; `load()` lacks type annotations.
 
+## Phase 3 — NBA loader (done 2026-07-15) — COMPLETE
+
+Spec → TDD build. `src/data/nba.py` reuses `_espn.py` unchanged, mirrors `mlb.py`,
+with four NBA deltas. Spec: `docs/superpowers/specs/2026-07-14-phase3-nba-loader-design.md`
+(no separate plan file this phase). **65/65 tests. Both real-data smoke AND full
+parquet write passed on live ESPN.**
+
+**Built (`src/data/nba.py`):** `_select_games` (type∈{2,3}, FINAL, non-null scores) →
+`_build_panel` → `load`/`main`/`--smoke`. Four NBA-specific deltas:
+1. **Continuous scoreboard walk** (not MLB's per-year windows) over `[date(min-1,9,1),
+   date(max,11,30)]`, filtered by ESPN `season_year` — NBA seasons span two calendar
+   years + the Aug-2020 bubble tail lands in `season_year=2020`.
+2. **`is_bubble = (venue_id=="4066") & (season==2020)`** — venue+season, NOT ESPN's
+   neutral flag (False for the bubble). Kept in panel for Phase 7, excluded downstream.
+3. **`relocated_home = (TOR, 2021)`** — hardcoded Tampa relocation (venue 1396), like
+   MLB's `(TOR, 2020)`.
+4. **All-indoor:** `is_dome=True` unconditionally, weather null.
+
+**Config:** `nba.treated_seasons: [2021]` (NOT [2020,2021]) — once the bubble is
+excluded, 2020's remaining games are all full-crowd pre-March-2020; the clean
+empty→partial signal lives entirely in 2021. Also keeps `derive_capacity`
+self-referencing 2020's own full houses.
+
+**`nba.parquet`:** 7571 games, 0 dropped. crowd_pct mean by season 2018:.94 2019:.93
+2020:.79 (mixed: full pre-March + 171 empty bubble) **2021:.124** (treatment) 2022:.89
+2023:.94. bubble=171, relocated=36, neutral=19, is_dome all True, weather all null.
+Strongest treatment signal of the three sports.
+
+**Capacity fix shipped this phase (`_espn.derive_capacity`, affects all sports):** a
+treated season's capacity is now `max(non-treated fallback, that season's own max)`,
+not just the borrowed fallback. Caught by the MLB build: the **2021 Rays ALDS Game 1**
+(Oct 8 2021, Tropicana) was a reopened full house (37,616) that exceeded Tropicana's
+tarped non-treated max (32,251) → `crowd_pct 1.166` tripped the validator's 1.05 ceiling.
+`max()` preserves the anti-inflation intent (a suppressed season never lowers capacity)
+while not under-anchoring a real full house. **No-op for NFL** (2020 near-empty
+everywhere), fixes MLB, applies to NBA. Test: `test_espn.py::test_derive_capacity_
+treated_own_max_wins_when_it_exceeds_borrow`.
+
 ## Status
 
-**Phase 3 (MLB) COMPLETE** — MLB loader + shared `src/data/_espn.py`, 48/48 tests,
-real-data smoke passes, final review READY TO MERGE, uncommitted awaiting human commit.
-The `data/interim/mlb.parquet` full write is not yet run (long ESPN pull; run
-`python -m src.data.mlb`). Next: **Phase 3 (NBA) loader** conforms to the same
-`_espn.py` contract — its extras: 2020 Orlando bubble (`is_bubble` via **date+venue**,
-since ESPN's neutral flag was False there), all-indoor (`is_dome=True`, weather null),
-two-calendar-year season labeling. Brainstorm → `writing-plans` → build.
+**Phase 3 COMPLETE for all three sports.** NFL + MLB + NBA loaders all emit the
+validated 29-col panel; `mlb.parquet` (13,277 games) and `nba.parquet` (7,571 games)
+both written this session with clean COVID dose signals (MLB 2020:.004→2021:.438;
+NBA 2021:.124). 65/65 tests. All uncommitted, awaiting human commit (git is user-owned).
+
+**Operational learnings this session:** (1) long ESPN pulls get **reaped by a
+background-runtime cap** every few minutes — the immutable write-once cache makes each
+resume cheap/self-completing; MLB took ~several resumes, NBA a few. Once the cache is
+warm the final re-read+validate+write fits in one window. (2) `python` isn't on the
+harness shell PATH — use `.venv/bin/python`.
+
+**Deferred / next:**
+- **Delete ESPN caches** (`data/raw/*/espn`, ~14GB MLB + ~6GB NBA) once parquets are
+  verified — saved as a memory note. Both caches AND parquets are gitignored/local-only.
+- **Phase 4** — sport-blind features: Elo (replaces the 1500.0 placeholder), `crowd_pct`
+  already built, rest, travel. Then Phase 5 descriptive HFA, 6a/6b causal, 7 bubble.
+- **NFL parquet** — verify `data/interim/nfl.parquet` exists / regenerate if needed
+  (capacity fix is a no-op for NFL, so no numeric change).
