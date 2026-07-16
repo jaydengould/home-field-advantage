@@ -11,7 +11,7 @@ paper-quality write-up rendered via Quarto (PDF + HTML).
 
 Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
 
-**Status: in development — Phases 1–3 complete (all three loaders build validated panels). Phase 4 (features) next. 65/65 tests.**
+**Status: in development — Phases 1–4 complete (all three loaders build validated panels; sport-blind features populate the model-ready `data/processed/` panels). Phase 5 (descriptive HFA) next. 86/86 tests.**
 
 ## Progress
 
@@ -35,10 +35,10 @@ Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
   scoreboard-by-date walk, and the Option-A capacity/coverage helpers, now shared so all
   sports compute `crowd_pct` identically). No weather for MLB (not a confounder of a
   policy-identified margin estimate); quality controlled via Elo (baseball has no point
-  spread). → `data/interim/mlb.parquet` (2018–2023, 13,277 games, 0 dropped). `crowd_pct`
+  spread). → `data/interim/mlb.parquet` (2018–2023, 13,272 games). `crowd_pct`
   mean by season: `.66 .65 .004 .44 .63 .68` — empty 2020, partial-reopening 2021.
 - ✅ **Phase 3 (NBA)** — NBA loader on the same `_espn.py` contract → `data/interim/nba.parquet`
-  (2018–2023, 7,571 games, 0 dropped). All-indoor (`is_dome=True`, weather null); the
+  (2018–2023, 7,562 games). All-indoor (`is_dome=True`, weather null); the
   **2020 Orlando bubble** (171 games) is flagged via venue+season (`is_bubble`) and excluded
   from the pooled model but kept for the Phase-7 decomposition; TOR's 2021 Tampa relocation
   flagged. `crowd_pct` mean by season: `.94 .93 .79 .124 .89 .94` — **2021 (0.124) is the
@@ -48,6 +48,22 @@ Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
   fallback, that season's own max)`, so a genuinely reopened full house (e.g. the 2021 Rays
   ALDS after caps lifted) isn't under-anchored into a `crowd_pct > 1`. Preserves the
   anti-inflation intent (a suppressed season never lowers capacity); no-op for NFL.
+- ✅ **All-Star exhibition fix (loaders)** — ESPN types All-Star/Rising-Stars games as
+  regular season (`season_type=2`), so they had slipped the loaders' filter with
+  non-franchise abbrevs (MLB `AL`/`NL`; NBA `DUR`/`GIA`/`LEB`/`STE`/`USA`/`WORLD`).
+  `_select_games` now excludes them (5 MLB + 9 NBA rows), and the two parquets were
+  regenerated. `crowd_pct` season means are unchanged.
+- ✅ **Phase 4 — sport-blind features** → `data/processed/{nfl,mlb,nba}.parquet`, each
+  re-validated. One sport-blind module (`src/features/build.py`) populates the placeholder
+  columns: **Elo** (a "middle" 538-grounded rating — params web-verified; stores *pre-game*
+  ratings so a game's own result never enters its own control; HFA lives only in the
+  win-probability, not the stored rating; rest/travel are *not* baked in — they are separate
+  controls), **rest days** (per `(sport, team, season)`; first game of a season is null),
+  and **travel km** (haversine from a web-verified city-coordinate lookup; bubble → 0,
+  neutral/relocated → null). Elo sanity gate (bug-detection, HFA-inclusive): accuracy
+  NFL `0.627`, MLB `0.577`, NBA `0.639` — sensible and ranking the right teams; the ~2-pt
+  gap to 538's *full* model is the deliberate cost of the simpler "middle" Elo, not a bug
+  (no `k`-tuning for a control variable).
 
 ## Roadmap (working, subject to change)
 
@@ -59,8 +75,8 @@ NFL is the pilot — prove the vertical slice on one sport, then the others conf
 | 1 | Schema contract validator + `config/sports.yaml` | ✅ done |
 | 2 | NFL pilot loader → validated panel (ESPN attendance + empirical Option-A capacity) | ✅ done |
 | 3 | MLB + NBA loaders conform to the contract (on shared `src/data/_espn.py`) | ✅ done |
-| 4 | Sport-blind features — Elo, `crowd_pct`, rest, travel | ⬅ next |
-| 5 | Descriptive HFA (win% / margin by sport & season) — data sanity gate | |
+| 4 | Sport-blind features — Elo, `crowd_pct`, rest, travel | ✅ done |
+| 5 | Descriptive HFA (win% / margin by sport & season) — data sanity gate | ⬅ next |
 | 6a | Causal — TWFE dose-response (the engine) | |
 | 6b | Causal — back-pocket on/off DiD (intuitive sanity check) | |
 | 7 | Bubble decomposition + seeding-games placebo | |
@@ -88,16 +104,22 @@ Each phase is its own spec → plan → build loop (see `docs/superpowers/`).
 
 ## Building the data
 
-Loaders pull from ESPN and cache every response under `data/raw/<sport>/espn/`
-(immutable, write-once), then write the validated panel to `data/interim/<sport>.parquet`.
-Downloaded data is gitignored — a fresh clone re-fetches.
+Two stages. **Loaders** pull from ESPN and cache every response under
+`data/raw/<sport>/espn/` (immutable, write-once), then write the validated panel to
+`data/interim/<sport>.parquet`. **Features** read the interim panels and write the
+feature-complete, model-ready `data/processed/<sport>.parquet`. All of `data/` is
+gitignored — a fresh clone re-fetches (loaders) then rebuilds (features).
 
 ```bash
+# 1. Loaders → data/interim/
 .venv/bin/python -m src.data.nfl              # → data/interim/nfl.parquet
 .venv/bin/python -m src.data.mlb              # → data/interim/mlb.parquet   (long: see note)
 .venv/bin/python -m src.data.nba              # → data/interim/nba.parquet   (long: see note)
 .venv/bin/python -m src.data.mlb --smoke      # quick real-data dose check, no parquet write
 .venv/bin/python -m src.data.nba --smoke      # quick 2020+2021 dose check (bubble + reopening ramp)
+
+# 2. Features → data/processed/ (reads interim, no ESPN fetch; prints the Elo accuracy gate)
+.venv/bin/python -m src.features.build        # → data/processed/{nfl,mlb,nba}.parquet
 ```
 
 **Note on the long pulls (MLB ~14.5k games, NBA ~7.9k):** a full pull is thousands of
