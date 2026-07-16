@@ -30,6 +30,16 @@ def test_select_drops_preseason_allstar_and_unplayed():
     assert kept == {"3", "4"}
 
 
+def test_select_drops_allstar_and_rising_stars():
+    events = [
+        _game("1", stype=2),                              # regular -> keep
+        _game("2", home="LEB", away="DUR", stype=2),      # All-Star -> drop
+        _game("3", home="USA", away="WORLD", stype=2),    # Rising Stars -> drop
+    ]
+    kept = {g["event_id"] for g in _select_games(events)}
+    assert kept == {"1"}
+
+
 def _panel_of(games, treated=(2021,)):
     att = {g["event_id"]: 18000 for g in games}
     cap_df = pd.DataFrame({"stadium_id": [g["venue_id"] for g in games],

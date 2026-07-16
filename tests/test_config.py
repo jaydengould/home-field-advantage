@@ -25,3 +25,13 @@ def test_nfl_load_seasons():
     lo, hi = cfg["nfl"]["load_seasons"]
     assert lo == 2018 and hi == 2023
     assert lo <= hi
+
+
+def test_elo_params_present_for_all_sports():
+    import yaml
+    from pathlib import Path
+    cfg = yaml.safe_load(Path("config/sports.yaml").read_text())
+    for sport in ("nfl", "mlb", "nba"):
+        elo = cfg[sport]["elo"]
+        assert {"k", "hfa", "carryover"} <= set(elo)
+        assert 0.0 < elo["carryover"] <= 1.0

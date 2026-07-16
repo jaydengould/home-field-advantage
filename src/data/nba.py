@@ -34,6 +34,9 @@ BUBBLE_VENUE_ID = "4066"
 BUBBLE_SEASON = 2020
 # TOR played 2020-21 (season 2021) "home" games in Tampa; ESPN neutralSite is False.
 RELOCATED = frozenset({("TOR", 2021)})
+# ponytail: All-Star + Rising Stars "teams" (ESPN types them season_type=2). Only
+# non-franchise abbrevs in the 2018-2023 window.
+ALLSTAR_ABBRS = frozenset({"DUR", "GIA", "LEB", "STE", "USA", "WORLD"})
 
 
 def _select_games(events: Iterable[dict]) -> list[dict]:
@@ -46,6 +49,8 @@ def _select_games(events: Iterable[dict]) -> list[dict]:
         if g["status"] != FINAL:
             continue
         if g["home_score"] is None or g["away_score"] is None:
+            continue
+        if g["home_abbr"] in ALLSTAR_ABBRS or g["away_abbr"] in ALLSTAR_ABBRS:
             continue
         out.append(g)
     return out

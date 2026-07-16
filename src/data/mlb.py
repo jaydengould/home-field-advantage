@@ -29,6 +29,11 @@ FINAL = "STATUS_FINAL"
 # ponytail: MLB's only permanent (non-retractable) dome is Tropicana Field
 # (ESPN venue id 31). Retractables -> open; inert here since MLB weather is null.
 PERMANENT_DOME_VENUE_IDS = frozenset({"31"})
+# ponytail: ESPN types the All-Star game as season_type=2 (regular season), so
+# the PLAYED_TYPES filter can't catch it. These abbrevs are the only non-franchise
+# "teams" in the 2018-2023 window. Exclusion set (window is fixed) beats a 30-team
+# allowlist.
+ALLSTAR_ABBRS = frozenset({"AL", "NL"})
 
 
 def _select_games(events: Iterable[dict]) -> list[dict]:
@@ -41,6 +46,8 @@ def _select_games(events: Iterable[dict]) -> list[dict]:
         if g["status"] != FINAL:
             continue
         if g["home_score"] is None or g["away_score"] is None:
+            continue
+        if g["home_abbr"] in ALLSTAR_ABBRS or g["away_abbr"] in ALLSTAR_ABBRS:
             continue
         out.append(g)
     return out

@@ -415,23 +415,79 @@ while not under-anchoring a real full house. **No-op for NFL** (2020 near-empty
 everywhere), fixes MLB, applies to NBA. Test: `test_espn.py::test_derive_capacity_
 treated_own_max_wins_when_it_exceeds_borrow`.
 
+## Phase 4 — sport-blind features (done 2026-07-15) — COMPLETE
+
+Brainstorm → spec → plan → subagent-driven build (5 tasks + 2 controller-caught fixes +
+1 final-review fix; per-task reviews + opus whole-branch review = READY TO MERGE). Specs/
+plans under `docs/superpowers/{specs,plans}/2026-07-15-phase4-features*`. **86 tests. Real-
+data build wrote all three `data/processed/{sport}.parquet`, each passing `validate()`.**
+
+**Built (`src/features/build.py` — one sport-blind module, no sport branching):**
+- `add_travel(panel, coords)` — haversine(away-city, home-city); `is_bubble`→0;
+  `neutral_site`/`relocated_home`→NaN. Coords from new `config/venue_coords.yaml`
+  (93 `(sport,team)→[lat,lon]` entries, city-level, **web-verified against Wikipedia
+  stadium lists**, era-correct for 2018-23: OAK≠LV, LA/LAC share SoFi, NBA LAC=downtown).
+- `add_rest(panel)` — days since prior game per **`(sport,team,season)`**; first game of a
+  season → `NA` (Int64). Whole-day diffs.
+- `add_elo(panel, params)` — "middle" 538-grounded Elo. **Params web-verified from 538**
+  (`config/sports.yaml` `elo:` blocks): nfl 20/48/0.667, mlb 4/24/0.667, nba 10/100/0.75,
+  mean 1500. Stores **PRE-game** ratings (a game's own result never enters its stored
+  rating); HFA only inside the win-prob expectation; rating state keyed by `(sport,team)`.
+- `build(sport)` (interim→3 transforms→`validate()`→processed), `elo_accuracy(panel,hfa)`,
+  `main()`.
+
+**Decisions settled this phase:**
+- **Elo = "middle" not "full"** — MOV multiplier `ln(|margin|+1)`, no 538 autocorrelation
+  term. HFA + carryover taken verbatim from 538 (MOV-independent); **K is scale-matched to
+  our simpler multiplier** (NBA 10 not 20 — 538's K sits inside a normalized formula).
+- **Don't bake rest/travel into Elo** (538 does) — they are separate regression controls;
+  baking in would double-count. **Constant HFA, never fan-adjusted** (538 uses MLB 24 w/
+  fans, 9.6 empty — that IS the crowd effect we're estimating; baking it in would absorb it.
+  Nice independent corroboration + citable).
+- **Output stage = `data/processed/`** (interim=loader output, processed=feature-complete).
+
+**Elo accuracy gate (HFA-inclusive, bug-detection not tuning):** nfl 0.627, mlb 0.577,
+nba 0.639. NFL/MLB in-band; **NBA 0.639 is a PASS** — the 66-68% band is 538's *full*
+model; our middle Elo at 0.639 is legitimate (nowhere near <0.52 bug threshold, ranks the
+right teams: NBA-2019 top = TOR/MIL/GS/HOU/POR). ~2pt gap = designed middle-vs-full cost;
+no K-tuning (spec forbids for a control var). COVID dose survives the pipeline unchanged.
+
+**Two bugs caught by controller verification (not by tests/reviewers):**
+1. **Loader All-Star leak (Task 1, a Phase-3 gap):** ESPN types All-Star/Rising-Stars games
+   as `season_type=2`, so they slipped the `{2,3}` filter with fake abbrevs (MLB AL/NL; NBA
+   DUR/GIA/LEB/STE/USA/WORLD). Added exclusion sets to `mlb.py`/`nba.py` `_select_games`;
+   **regenerated `mlb.parquet` (13277→13272) and `nba.parquet` (7571→7562)**.
+2. **YAML "Norway problem" (Task 2):** bare `NO:` key parses as boolean `false`, dropping
+   New Orleans (NFL Saints + NBA Pelicans) coords. Quoted `"NO"`; added regression test
+   `test_coords_cover_every_panel_team` (asserts every panel team has coords).
+Plus **F1 (final review):** `elo_accuracy` had omitted HFA — fixed to match spec gate #2.
+
+**Deferred Minors (non-blocking, in `.superpowers/sdd/progress.md`):** Elo no-update on
+ties (NFL-rare); coords-coverage test FileNotFounds on a cold checkout (no parquets);
+doubleheader→rest 0; config test doesn't assert exact k/hfa; `_elo_params` returns YAML
+ints; unused test fixtures.
+
 ## Status
 
-**Phase 3 COMPLETE for all three sports.** NFL + MLB + NBA loaders all emit the
-validated 29-col panel; `mlb.parquet` (13,277 games) and `nba.parquet` (7,571 games)
-both written this session with clean COVID dose signals (MLB 2020:.004→2021:.438;
-NBA 2021:.124). 65/65 tests. All uncommitted, awaiting human commit (git is user-owned).
+**Phase 4 COMPLETE.** All three `data/processed/{nfl,mlb,nba}.parquet` written with every
+feature column populated (Elo, rest, travel; crowd_pct already built) and passing
+`validate()`. 86/86 tests. All uncommitted, awaiting human commit (git is user-owned).
 
-**Operational learnings this session:** (1) long ESPN pulls get **reaped by a
-background-runtime cap** every few minutes — the immutable write-once cache makes each
-resume cheap/self-completing; MLB took ~several resumes, NBA a few. Once the cache is
-warm the final re-read+validate+write fits in one window. (2) `python` isn't on the
-harness shell PATH — use `.venv/bin/python`.
+**New this session:**
+- **Web-verify externally-sourced numbers** (538 Elo params, city coords) before locking
+  into specs — recollection was wrong once (NFL carryover 0.75→0.667). Saved as a memory.
+- Subagent-driven caveat: an implementer wrote a **hallucinated report** (described a
+  different task) while its actual working-tree work was correct — trust the diff +
+  independent controller verification over the report.
 
 **Deferred / next:**
 - **Delete ESPN caches** (`data/raw/*/espn`, ~14GB MLB + ~6GB NBA) once parquets are
-  verified — saved as a memory note. Both caches AND parquets are gitignored/local-only.
-- **Phase 4** — sport-blind features: Elo (replaces the 1500.0 placeholder), `crowd_pct`
-  already built, rest, travel. Then Phase 5 descriptive HFA, 6a/6b causal, 7 bubble.
-- **NFL parquet** — verify `data/interim/nfl.parquet` exists / regenerate if needed
-  (capacity fix is a no-op for NFL, so no numeric change).
+  verified — saved as a memory note. Caches AND parquets are gitignored/local-only.
+  (Not yet done; still needed if any loader regen is required.)
+- **Phase 5** — descriptive HFA: home win% / scoring margin by sport & season + first
+  figures (data sanity gate before modeling). Then 6a/6b causal (TWFE + DiD), 7 bubble,
+  8 Quarto.
+- **Phase 6a open decision (carry-forward):** restrict the causal sample to the COVID
+  window + baseline, or pool all seasons and lean on FE? Normal-season `crowd_pct` is
+  endogenous. Decide explicitly in 6a.
+- **NFL interim parquet** is present (1657 rows); processed now written for all three.
