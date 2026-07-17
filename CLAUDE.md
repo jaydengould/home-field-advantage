@@ -52,6 +52,9 @@ wrong, name methodological flaws plainly, flag endogeneity/selection/sample-size
 problems even when unwelcome, and never agree just to be agreeable. Distinguish
 what the data can support from what it can't.
 
+**Do not simply agree with me. Be my sparring partner. Identify my blind spots,
+structural risks, and faulty assumptions.**
+
 **Update this CLAUDE.md at the end of each working session** — record decisions
 made, schema/config changes, and what's next. It's the memory that survives
 between sessions.
@@ -467,27 +470,75 @@ ties (NFL-rare); coords-coverage test FileNotFounds on a cold checkout (no parqu
 doubleheader→rest 0; config test doesn't assert exact k/hfa; `_elo_params` returns YAML
 ints; unused test fixtures.
 
+## Phase 5 — descriptive HFA (done 2026-07-17) — COMPLETE
+
+Brainstorm → spec → plan → subagent-driven build (2 tasks, per-task reviews +
+opus whole-branch review = READY TO MERGE, zero findings). Specs/plans under
+`docs/superpowers/{specs,plans}/2026-07-17-phase5-descriptive-hfa*`. **93/93 tests.**
+Data sanity gate before modeling. All uncommitted, awaiting human commit.
+
+**Built (`src/viz/descriptive.py` — one sport-blind module, no branching):**
+- `summarize(panel) -> DataFrame` — pure/tested. Filters to **clean regular-season
+  home games** (`is_playoff==False` AND NOT `neutral_site|relocated_home|is_bubble`),
+  groups by season → win% + margin, each with a **naive iid SE** (proportion SE for
+  win%, sample-mean SE for margin). Win% uses **decided** games only (ties→null
+  dropped); margin uses all clean-home games (`n_games` includes ties). Appends a
+  **pooled_fullcrowd** row over `covid_era==False` seasons only (the true-HFA headline
+  — pooling all seasons would fold in the COVID dip). Emits a per-season `covid_era`
+  bool (drives the gate; also documents which seasons were policy-restricted).
+- `plot_hfa(table)` — 2-panel figure (win% / margin) by season, one line per sport,
+  SE error bars, 0.5/0.0 reference lines, 2019.5–2021.5 COVID band shaded.
+- `main()` → writes `results/tables/descriptive_hfa.csv` + `results/figures/hfa_by_season.png`, prints the gate.
+- `tests/test_descriptive.py` (7 tests).
+
+**Decisions settled this phase:**
+- **Playoffs EXCLUDED from descriptive HFA** (not a subsection). Playoff home teams
+  are the better seed (HFA blends with quality asymmetry → non-comparable), samples
+  are tiny (NFL 10–12/season), and COVID-season playoffs collapse (NBA 2020 = 0 clean
+  home games, all bubble; MLB 2020 postseason mostly neutral bubble sites) — so a
+  playoff slice can't even show the dip. Document as a one-line caveat in Phase 8.
+- **SEs are naive iid guards, NOT causal CIs** — a hedge against over-reading a noisy
+  season; Phase 6 does the real clustered/robust inference.
+- **Sanity gate is data-driven off `covid_era`, not a hardcoded 2020.** Treated seasons
+  differ per sport (NFL 2020, MLB 2020–21, NBA 2021); the gate checks whether the worst
+  *treated* season's margin falls below the full-crowd pooled baseline. (Caught in review:
+  a hardcoded-2020 check gave NBA a **false PASS** off a coincidental 0.05 gap while its
+  real dip lives in 2021.)
+
+**Sanity-gate result (the pre-modeling data check):**
+`[PASS] nfl` (pooled win .552, margin 1.75, 2020 dips) · `[CHECK] mlb` (win .528,
+margin **0.04**, 2020–21 don't dip) · `[PASS] nba` (win .570, margin 2.26, 2021 dips).
+
+**⚠️ SUBSTANTIVE FINDING carried to Phase 6a — MLB scoring-margin HFA is
+noise-dominated.** Pooled MLB run-margin edge is +0.04 (SE .05); per-season SE ~.09
+dwarfs it; 2019 is even negative (−0.004). The natural experiment is **visible in
+NFL/NBA margin, invisible in MLB margin.** The design's "margin = more power" premise
+**fails for baseball** — report win% (~.528) as MLB's primary HFA signal and expect
+wide/insignificant MLB margin CIs in the causal model. Not a bug; the gate surfaced a
+real property. (The COVID *dose* is still strong in MLB `crowd_pct`; it's the *margin
+outcome* that lacks power, not the treatment.)
+
 ## Status
 
-**Phase 4 COMPLETE.** All three `data/processed/{nfl,mlb,nba}.parquet` written with every
-feature column populated (Elo, rest, travel; crowd_pct already built) and passing
-`validate()`. 86/86 tests. All uncommitted, awaiting human commit (git is user-owned).
+**Phase 5 COMPLETE.** `src/viz/descriptive.py` + `tests/test_descriptive.py` written;
+`results/tables/descriptive_hfa.csv` + `results/figures/hfa_by_season.png` generated.
+93/93 tests. Opus whole-branch review READY TO MERGE, zero findings. All uncommitted,
+awaiting human commit (git is user-owned).
 
 **New this session:**
-- **Web-verify externally-sourced numbers** (538 Elo params, city coords) before locking
-  into specs — recollection was wrong once (NFL carryover 0.75→0.667). Saved as a memory.
-- Subagent-driven caveat: an implementer wrote a **hallucinated report** (described a
-  different task) while its actual working-tree work was correct — trust the diff +
-  independent controller verification over the report.
+- Added **"Be my sparring partner"** directive to the Working convention (don't just
+  agree; surface blind spots / structural risks / faulty assumptions).
+- The per-task review earned its keep: caught the **hardcoded-2020 gate** false-PASS for
+  NBA — a plan-mandated flaw, surfaced to the user, fixed data-driven (inline TDD, then
+  ratified by the final review).
 
 **Deferred / next:**
+- **Phase 6a — TWFE dose-response** (the causal engine). Two carry-forward decisions to
+  make explicitly in 6a: (1) **restrict the sample** to the COVID window + baseline, or
+  **pool all seasons** and lean on FE? Normal-season `crowd_pct` is endogenous. (2) Handle
+  the **MLB margin-power problem** above — likely report win% as MLB's headline and/or a
+  win%/LPM or logit companion, since margin CIs will be uninformative for baseball.
 - **Delete ESPN caches** (`data/raw/*/espn`, ~14GB MLB + ~6GB NBA) once parquets are
-  verified — saved as a memory note. Caches AND parquets are gitignored/local-only.
-  (Not yet done; still needed if any loader regen is required.)
-- **Phase 5** — descriptive HFA: home win% / scoring margin by sport & season + first
-  figures (data sanity gate before modeling). Then 6a/6b causal (TWFE + DiD), 7 bubble,
-  8 Quarto.
-- **Phase 6a open decision (carry-forward):** restrict the causal sample to the COVID
-  window + baseline, or pool all seasons and lean on FE? Normal-season `crowd_pct` is
-  endogenous. Decide explicitly in 6a.
-- **NFL interim parquet** is present (1657 rows); processed now written for all three.
+  verified — gitignored/local-only. (Not yet done; needed if any loader regen is required.)
+- Then 6b on/off DiD, 7 bubble decomposition + placebo, 8 Quarto write-up (incl. the
+  playoff-exclusion caveat).

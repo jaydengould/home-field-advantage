@@ -11,7 +11,7 @@ paper-quality write-up rendered via Quarto (PDF + HTML).
 
 Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
 
-**Status: in development — Phases 1–4 complete (all three loaders build validated panels; sport-blind features populate the model-ready `data/processed/` panels). Phase 5 (descriptive HFA) next. 86/86 tests.**
+**Status: in development — Phases 1–5 complete (all three loaders build validated panels; sport-blind features populate the model-ready `data/processed/` panels; descriptive HFA quantified with a data-sanity gate). Phase 6a (causal TWFE) next. 93/93 tests.**
 
 ## Progress
 
@@ -64,6 +64,21 @@ Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
   NFL `0.627`, MLB `0.577`, NBA `0.639` — sensible and ranking the right teams; the ~2-pt
   gap to 538's *full* model is the deliberate cost of the simpler "middle" Elo, not a bug
   (no `k`-tuning for a control variable).
+- ✅ **Phase 5 — descriptive HFA** → `results/tables/descriptive_hfa.csv` +
+  `results/figures/hfa_by_season.png`. One sport-blind module (`src/viz/descriptive.py`)
+  reports home win% and mean scoring margin (with naive iid SEs) by sport × season, plus a
+  pooled full-crowd headline. Clean home games only (regular season; neutral/relocated/bubble
+  excluded). Playoffs are excluded from the descriptive number (home advantage there is
+  confounded by seeding, and COVID-season playoffs were largely neutral-site/bubble). A
+  **data-sanity gate** (data-driven off each sport's real treated seasons — NFL 2020, MLB
+  2020–21, NBA 2021) checks for positive full-crowd HFA and a COVID-season margin dip before
+  any modeling begins.
+  - **Findings:** pooled home win% is **NFL .552, NBA .570, MLB .528**. The empty-stadium
+    effect is visible but noisy at the descriptive level — statistically cleanest in **NBA
+    margin** (2021 dips 2.26 → 0.92, *z* ≈ 2.6) and **NFL win%** (2020 drops to a coin-flip
+    .504). **MLB scoring-margin HFA is noise-dominated** (pooled +0.04 runs, below its own
+    season-to-season noise), so the design's "margin = more power" premise fails for baseball
+    — win% is MLB's usable signal. Carried forward as an explicit consideration for Phase 6a.
 
 ## Roadmap (working, subject to change)
 
@@ -76,8 +91,8 @@ NFL is the pilot — prove the vertical slice on one sport, then the others conf
 | 2 | NFL pilot loader → validated panel (ESPN attendance + empirical Option-A capacity) | ✅ done |
 | 3 | MLB + NBA loaders conform to the contract (on shared `src/data/_espn.py`) | ✅ done |
 | 4 | Sport-blind features — Elo, `crowd_pct`, rest, travel | ✅ done |
-| 5 | Descriptive HFA (win% / margin by sport & season) — data sanity gate | ⬅ next |
-| 6a | Causal — TWFE dose-response (the engine) | |
+| 5 | Descriptive HFA (win% / margin by sport & season) — data sanity gate | ✅ done |
+| 6a | Causal — TWFE dose-response (the engine) | ⬅ next |
 | 6b | Causal — back-pocket on/off DiD (intuitive sanity check) | |
 | 7 | Bubble decomposition + seeding-games placebo | |
 | 8 | Quarto write-up → PDF + HTML | |
@@ -120,6 +135,9 @@ gitignored — a fresh clone re-fetches (loaders) then rebuilds (features).
 
 # 2. Features → data/processed/ (reads interim, no ESPN fetch; prints the Elo accuracy gate)
 .venv/bin/python -m src.features.build        # → data/processed/{nfl,mlb,nba}.parquet
+
+# 3. Descriptive HFA → results/ (reads processed; prints the PASS/CHECK sanity gate)
+.venv/bin/python -m src.viz.descriptive       # → results/tables/descriptive_hfa.csv + results/figures/hfa_by_season.png
 ```
 
 **Note on the long pulls (MLB ~14.5k games, NBA ~7.9k):** a full pull is thousands of
