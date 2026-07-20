@@ -11,7 +11,7 @@ paper-quality write-up rendered via Quarto (PDF + HTML).
 
 Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
 
-**Status: in development — Phases 1–5 complete (all three loaders build validated panels; sport-blind features populate the model-ready `data/processed/` panels; descriptive HFA quantified with a data-sanity gate). Phase 6a (causal TWFE) next. 93/93 tests.**
+**Status: in development — Phases 1–6a complete (all three loaders build validated panels; sport-blind features populate the model-ready `data/processed/` panels; descriptive HFA quantified with a data-sanity gate; the causal TWFE dose-response engine estimates the crowd effect per sport). Phase 6b (on/off DiD) next. 99/99 tests.**
 
 ## Progress
 
@@ -79,6 +79,33 @@ Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
     .504). **MLB scoring-margin HFA is noise-dominated** (pooled +0.04 runs, below its own
     season-to-season noise), so the design's "margin = more power" premise fails for baseball
     — win% is MLB's usable signal. Carried forward as an explicit consideration for Phase 6a.
+- ✅ **Phase 6a — causal TWFE dose-response** → `results/tables/twfe_{nfl,mlb,nba}.csv`,
+  `results/tables/twfe_cross_sport.csv`, `results/figures/twfe_crowd_effect.png`. One
+  sport-blind estimator (`src/models/twfe.py`) fits two outcomes — scoring margin and a
+  win-probability **linear probability model** (whose `crowd_pct` coefficient is the
+  cross-sport-comparable Δ win-prob, and MLB's usable signal) — over two samples (pooled +
+  a restricted robustness check), with home-team fixed effects and cluster-robust SEs.
+  - **Design correction (the headline lesson):** the spec's original **two-way** (team +
+    season) fixed effects **inverted every coefficient** (NFL margin −8.75, opposite the
+    descriptive dip). The COVID crowd shock is ~a *pure season-level* treatment (`crowd_pct`
+    ≈ 0.97 every normal season, ≈ 0.07 in the treated one), so full season dummies are
+    near-collinear with the treatment and absorb the very between-season contrast that *is*
+    the natural experiment. **Fix: team fixed effects only + a linear season trend** (nets
+    out smooth league drift without erasing the COVID contrast). A time-clustered treatment
+    is a within-team before/during/after comparison — full time effects delete it.
+  - **Estimates (team FE + trend):** a full crowd is worth **NFL +1.7 pts** of margin
+    (≈ +4.6 pp win prob), **NBA +1.1 pts** (≈ +1.5 pp), **MLB ≈ 0** (noise, as Phase 5
+    predicted). Signs match the descriptive dip; per-sport CIs are wide and cross zero
+    (underpowered — a finding, not a failure).
+  - **Honesty caveats carried to the write-up:** (1) there is **no within-season dose curve**
+    for any sport (within-2020 NFL dose↔margin corr ≈ 0) — all three are effectively on/off;
+    (2) the estimate conflates the crowd with **any other 2020–21 league-wide shift** (the
+    trend removes only smooth drift, and a treated-season dummy is collinear with the crowd),
+    so **Phase 7's bubble decomposition is the disentangler**; (3) the NFL betting-spread
+    sensitivity is a **post-treatment bad control** (the spread already prices in the empty
+    stadium), so its attenuation is mechanical, not fragility. This also promotes **Phase 6b
+    (on/off DiD) to co-primary** — the natural estimator for a treatment that hit everyone at
+    once.
 
 ## Roadmap (working, subject to change)
 
@@ -92,8 +119,8 @@ NFL is the pilot — prove the vertical slice on one sport, then the others conf
 | 3 | MLB + NBA loaders conform to the contract (on shared `src/data/_espn.py`) | ✅ done |
 | 4 | Sport-blind features — Elo, `crowd_pct`, rest, travel | ✅ done |
 | 5 | Descriptive HFA (win% / margin by sport & season) — data sanity gate | ✅ done |
-| 6a | Causal — TWFE dose-response (the engine) | ⬅ next |
-| 6b | Causal — back-pocket on/off DiD (intuitive sanity check) | |
+| 6a | Causal — TWFE dose-response (the engine; team FE + trend, not two-way FE) | ✅ done |
+| 6b | Causal — on/off DiD (now **co-primary**, not back-pocket — treatment is time-clustered) | ⬅ next |
 | 7 | Bubble decomposition + seeding-games placebo | |
 | 8 | Quarto write-up → PDF + HTML | |
 
@@ -138,6 +165,9 @@ gitignored — a fresh clone re-fetches (loaders) then rebuilds (features).
 
 # 3. Descriptive HFA → results/ (reads processed; prints the PASS/CHECK sanity gate)
 .venv/bin/python -m src.viz.descriptive       # → results/tables/descriptive_hfa.csv + results/figures/hfa_by_season.png
+
+# 4. Causal TWFE dose-response → results/ (reads processed; prints per-sport crowd coefs + NFL spread sensitivity)
+.venv/bin/python -m src.models.twfe           # → results/tables/twfe_{nfl,mlb,nba}.csv, twfe_cross_sport.csv + results/figures/twfe_crowd_effect.png
 ```
 
 **Note on the long pulls (MLB ~14.5k games, NBA ~7.9k):** a full pull is thousands of

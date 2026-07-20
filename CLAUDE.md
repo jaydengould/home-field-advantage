@@ -518,27 +518,80 @@ wide/insignificant MLB margin CIs in the causal model. Not a bug; the gate surfa
 real property. (The COVID *dose* is still strong in MLB `crowd_pct`; it's the *margin
 outcome* that lacks power, not the treatment.)
 
+## Phase 6a — causal TWFE dose-response (done 2026-07-20) — COMPLETE
+
+Brainstorm → spec → plan → subagent-driven build (2 tasks + a mid-build **design
+correction**; per-task reviews + opus whole-branch review = READY TO MERGE). Specs/plans
+under `docs/superpowers/{specs,plans}/2026-07-20-phase6a-twfe*`. **99/99 tests. Real-data
+run wrote all artifacts.** All uncommitted, awaiting human commit.
+
+**Built (`src/models/twfe.py` — one sport-blind module, no branching):**
+- `fit(panel, outcome, sample, treated_seasons, extra_controls)` — pure estimator (no
+  disk/net). Filters exclusions, builds `elo_diff`/`rest_diff`, fits `linearmodels.PanelOLS`,
+  returns a flat dict (`coef, se, ci_low, ci_high, pvalue, n_obs, n_dropped, n_entities` +
+  `coef_<control>`). `outcome ∈ {home_margin, home_win}`, `sample ∈ {pooled, restricted}`.
+- `_restricted_seasons(treated) = set(treated) ∪ {min−1, max+1}`; `_prep` (exclusion filter
+  + diff controls); `plot_effect` (forest plot); `main` (3 sports × 2 outcomes × 2 samples).
+- Outputs: `results/tables/twfe_{nfl,mlb,nba}.csv`, `twfe_cross_sport.csv` (LPM only),
+  `results/figures/twfe_crowd_effect.png`. Tests: `tests/test_twfe.py` (6).
+
+**Decisions settled this phase (brainstorm):**
+- **Two outcomes, identical RHS:** `home_margin` (power, NFL/NBA) + `home_win` as an **LPM**
+  (0/1). LPM `crowd_pct` coef *is* Δwin-prob → the cross-sport common unit + MLB's real
+  signal (Phase 5). No logit (incidental-parameters; breaks one-estimator rule).
+- **Two samples:** pooled headline + restricted (`treated ∪ adjacent`) robustness check.
+- **Controls (sport-blind):** `elo_diff`, `rest_diff`, `away_travel_km`. `closing_spread`/
+  weather are NFL-only → separate NFL sensitivity check.
+- **Exclusions:** `neutral_site | relocated_home | is_bubble | is_playoff`. Clustered SE by
+  `home_team`.
+
+**⚠️ THE BIG FINDING — season FE invert the estimate (mid-build correction, user-approved):**
+The spec's original two-way FE (`entity + time`) produced **all 12 crowd coefs NEGATIVE**
+(NFL margin −8.75), opposite the Phase-5 descriptive dip. Root cause: the COVID crowd shock
+is **~a pure season-level treatment** (`crowd_pct` ~0.97 every normal season, ~0.07 in the
+treated one), so **full season FE are near-collinear with `crowd_pct`** and absorb the
+between-season contrast that *is* the natural experiment → coef identified off tiny residual
+noise → garbage. Diagnostic (NFL margin): team+season FE −8.75 · **team FE only +1.92** · no
+FE +2.19 · season-level corr(crowd,margin) +0.63. **Fix = team (entity) FE ONLY + a linear
+`season_trend`** (nets out smooth drift without erasing the COVID contrast). A time-clustered
+treatment is a within-team before/during/after comparison; full time FE erase it.
+
+**Corrected headline estimates (team FE + trend):** NFL margin **+1.71** [−0.53, 3.95],
+win% +0.046; NBA margin **+1.06** [−0.70, 2.81], win% +0.015; MLB margin −0.14 (noise),
+win% −0.019. Signs match descriptive; per-sport CIs wide & cross zero (underpowered — Risk
+#5, a finding not a failure).
+
+**Final-review honesty corrections carried to Phase 8 (opus, independently reproduced coefs):**
+1. **NO within-season dose curve for ANY sport** — within-2020 NFL dose↔margin corr ≈ −0.03.
+   The Phase-2 "NFL carries the curve" hope is dead; all three are **on/off**. +1.71 is a
+   level shift, not a curve (that absence is *why* two-way FE degenerates).
+2. **`closing_spread` is a POST-TREATMENT bad control** — the spread is set knowing the
+   stadium is empty and prices in reduced HFA, so the 1.71→0.81 attenuation is mechanical
+   absorption of the crowd effect, NOT evidence the estimate is fragile.
+3. **Identifying assumption stated plainly:** estimate = crowd effect **+ any other 2020–21
+   league-wide home-margin shift**; the linear trend removes smooth drift, NOT the discrete
+   pandemic shock; a treated dummy can't be added (collinear) → **no in-model separation**.
+   **Phase 7's bubble decomposition is the disentangler.**
+
+**6b promoted to co-primary:** since the treatment is time-clustered, the 2×2 on/off DiD is
+the natural estimator, not a back-pocket — build it that way in Phase 6b.
+
 ## Status
 
-**Phase 5 COMPLETE.** `src/viz/descriptive.py` + `tests/test_descriptive.py` written;
-`results/tables/descriptive_hfa.csv` + `results/figures/hfa_by_season.png` generated.
-93/93 tests. Opus whole-branch review READY TO MERGE, zero findings. All uncommitted,
+**Phase 6a COMPLETE.** `src/models/twfe.py` + `tests/test_twfe.py`; `results/tables/twfe_*.csv`
++ `results/figures/twfe_crowd_effect.png` generated. 99/99 tests. Opus whole-branch review
+READY TO MERGE (findings = write-up honesty, all addressed in the spec). All uncommitted,
 awaiting human commit (git is user-owned).
 
-**New this session:**
-- Added **"Be my sparring partner"** directive to the Working convention (don't just
-  agree; surface blind spots / structural risks / faulty assumptions).
-- The per-task review earned its keep: caught the **hardcoded-2020 gate** false-PASS for
-  NBA — a plan-mandated flaw, surfaced to the user, fixed data-driven (inline TDD, then
-  ratified by the final review).
-
 **Deferred / next:**
-- **Phase 6a — TWFE dose-response** (the causal engine). Two carry-forward decisions to
-  make explicitly in 6a: (1) **restrict the sample** to the COVID window + baseline, or
-  **pool all seasons** and lean on FE? Normal-season `crowd_pct` is endogenous. (2) Handle
-  the **MLB margin-power problem** above — likely report win% as MLB's headline and/or a
-  win%/LPM or logit companion, since margin CIs will be uninformative for baseball.
-- **Delete ESPN caches** (`data/raw/*/espn`, ~14GB MLB + ~6GB NBA) once parquets are
-  verified — gitignored/local-only. (Not yet done; needed if any loader regen is required.)
-- Then 6b on/off DiD, 7 bubble decomposition + placebo, 8 Quarto write-up (incl. the
-  playoff-exclusion caveat).
+- **Phase 6b — on/off 2×2 DiD**, now the **co-primary** causal section (a time-clustered
+  treatment is a before/after by construction). Binarize crowd (full vs reduced), compare the
+  before/after change in home advantage; sanity-checks + intuitive-picture for 6a.
+- **Phase 7 — bubble decomposition + seeding placebo.** Doubles as the **disentangler** for
+  6a's un-separated "crowd + other pandemic shifts" (normal − empty ≈ crowd; empty − bubble ≈
+  travel + home-park).
+- **Phase 8 — Quarto write-up.** Carry the three honesty corrections above + the
+  playoff-exclusion caveat + a **descriptive playoff-HFA subsection** (reuse
+  `descriptive.summarize()` with `is_playoff==True`; blended with seeding quality → asterisk).
+- **Delete ESPN caches** (`data/raw/*/espn`, ~14GB MLB + ~6GB NBA) once parquets verified —
+  gitignored/local-only; only near project end (avoid re-pull risk).
