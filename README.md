@@ -11,7 +11,7 @@ paper-quality write-up rendered via Quarto (PDF + HTML).
 
 Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
 
-**Status: in development — Phases 1–6a complete (all three loaders build validated panels; sport-blind features populate the model-ready `data/processed/` panels; descriptive HFA quantified with a data-sanity gate; the causal TWFE dose-response engine estimates the crowd effect per sport). Phase 6b (on/off DiD) next. 99/99 tests.**
+**Status: in development — Phases 1–6b complete (all three loaders build validated panels; sport-blind features populate the model-ready `data/processed/` panels; descriptive HFA quantified with a data-sanity gate; the causal TWFE dose-response engine and the co-primary on/off DiD both estimate the crowd effect per sport, in agreement). Phase 7 (bubble decomposition) next. 104/104 tests.**
 
 ## Progress
 
@@ -106,6 +106,24 @@ Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
     stadium), so its attenuation is mechanical, not fragility. This also promotes **Phase 6b
     (on/off DiD) to co-primary** — the natural estimator for a treatment that hit everyone at
     once.
+- ✅ **Phase 6b — causal on/off DiD** → `results/tables/did_{nfl,mlb,nba}.csv`,
+  `results/tables/did_cross_sport.csv`, `results/figures/did_hfa_shrink.png`. The intuitive
+  co-primary companion to 6a: one sport-blind module (`src/models/did.py`) reports the **raw,
+  unadjusted before/after** change in home advantage — home-field advantage in full-crowd
+  seasons vs treated (empty) seasons, for both outcomes, with cluster-robust SEs and no
+  controls (that division of labor is deliberate — 6a is the controlled estimate, 6b is the
+  headline number a human can hold).
+  - **What the "2×2 DiD" actually is:** no untreated *group* exists (COVID hit every team at
+    once), but the outcome is already `home − away`, so the **away team is the implicit control
+    group** and other seasons are the **control *period***. It nets out symmetric league-wide
+    2020–21 shifts but not home-specific ones, so it carries **the same confound as 6a** — it's
+    the intuitive picture and a sanity check, not cleaner identification (Phase 7 disentangles).
+  - **Estimates agree with 6a within ~10–25%:** a full crowd is worth **NFL +1.6 pts** of
+    margin (≈ +4.8 pp win prob), **NBA +1.3 pts** (≈ +2.4 pp), **MLB ≈ 0** (a faint,
+    non-significant wrong-sign — statistically zero, as Phase 5 predicted). The dumbbell figure
+    (`did_hfa_shrink.png`) makes the shrink the subject: NFL/NBA home advantage collapses toward
+    zero without fans, MLB is a flat stub. Cross-method agreement (descriptive → TWFE → DiD)
+    is itself reassuring; per-sport CIs remain wide and cross zero (underpowered, not a failure).
 
 ## Roadmap (working, subject to change)
 
@@ -120,8 +138,8 @@ NFL is the pilot — prove the vertical slice on one sport, then the others conf
 | 4 | Sport-blind features — Elo, `crowd_pct`, rest, travel | ✅ done |
 | 5 | Descriptive HFA (win% / margin by sport & season) — data sanity gate | ✅ done |
 | 6a | Causal — TWFE dose-response (the engine; team FE + trend, not two-way FE) | ✅ done |
-| 6b | Causal — on/off DiD (now **co-primary**, not back-pocket — treatment is time-clustered) | ⬅ next |
-| 7 | Bubble decomposition + seeding-games placebo | |
+| 6b | Causal — on/off DiD (**co-primary**, not back-pocket — treatment is time-clustered) | ✅ done |
+| 7 | Bubble decomposition + seeding-games placebo | ⬅ next |
 | 8 | Quarto write-up → PDF + HTML | |
 
 Each phase is its own spec → plan → build loop (see `docs/superpowers/`).
@@ -168,6 +186,9 @@ gitignored — a fresh clone re-fetches (loaders) then rebuilds (features).
 
 # 4. Causal TWFE dose-response → results/ (reads processed; prints per-sport crowd coefs + NFL spread sensitivity)
 .venv/bin/python -m src.models.twfe           # → results/tables/twfe_{nfl,mlb,nba}.csv, twfe_cross_sport.csv + results/figures/twfe_crowd_effect.png
+
+# 5. Causal on/off DiD → results/ (reads processed; prints the raw before/after HFA per sport)
+.venv/bin/python -m src.models.did            # → results/tables/did_{nfl,mlb,nba}.csv, did_cross_sport.csv + results/figures/did_hfa_shrink.png
 ```
 
 **Note on the long pulls (MLB ~14.5k games, NBA ~7.9k):** a full pull is thousands of
