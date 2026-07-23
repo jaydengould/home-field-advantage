@@ -576,22 +576,104 @@ win% −0.019. Signs match descriptive; per-sport CIs wide & cross zero (underpo
 **6b promoted to co-primary:** since the treatment is time-clustered, the 2×2 on/off DiD is
 the natural estimator, not a back-pocket — build it that way in Phase 6b.
 
+## Phase 6b — on/off 2×2 DiD (done 2026-07-22) — COMPLETE
+
+Brainstorm → spec → plan → subagent-driven build (2 tasks, per-task reviews + opus
+whole-branch review = READY TO MERGE, zero Critical/Important). Specs/plans under
+`docs/superpowers/{specs,plans}/2026-07-22-phase6b-did*`. **104/104 tests. Real-data run
+wrote all artifacts.** All uncommitted, awaiting human commit.
+
+**Built (`src/models/did.py` — one sport-blind module, no branching):**
+- `fit(panel, outcome, sample, treated_seasons)` — pure raw before/after estimator. OLS
+  `outcome ~ reduced` (`reduced = season ∈ treated_seasons`, season-level binary), SE
+  **clustered by `home_team`**. Returns flat dict: `hfa_full` (=intercept), `hfa_reduced`
+  (=intercept+coef), `crowd_effect = HFA_full − HFA_reduced = −coef` (positive = crowd helps
+  home, **matches 6a's sign**), `se/ci_low/ci_high/pvalue` (CI **negated AND swapped** off the
+  reduced coef; SE/p invariant under the flip), `n_full/n_reduced/n_obs/n_entities`.
+- `plot_slope(results)` — dumbbell/slope, one panel per outcome, one row per sport,
+  `hfa_reduced`(empty, hollow)→`hfa_full`(fans, filled); **pooled rows only** (restricted is
+  table-only). `main()` → `results/tables/did_{nfl,mlb,nba}.csv`, `did_cross_sport.csv`
+  (`home_win` rows only, same rule as 6a), `results/figures/did_hfa_shrink.png`.
+- **`_exclusion_mask` extracted out of `twfe._prep`** → single shared exclusion definition
+  across 6a/6b (behavior-preserving refactor; twfe's 6 tests stayed green). `did.py` reuses
+  `_restricted_seasons` + `SPORT_COLORS` from `twfe`. `tests/test_did.py` (5 tests).
+
+**Decisions settled this phase:**
+- **What the "2×2 DiD" actually is.** No untreated *group* exists (COVID hit every team), so
+  strictly this is a **comparative interrupted time series / within-unit before-after**. The
+  outcome is already `home − away`, so the **away team is the implicit control group** and
+  other seasons are the **control *period*** (not the control group — a distinction the user
+  pushed on and it's right). Nets out *symmetric* league-wide 2020–21 shifts; does NOT net out
+  *home-specific* non-crowd 2020–21 changes → **same confound as 6a**, NOT cleaner
+  identification. Keep the precise naming in Phase 8; "2×2 DiD" is the intuitive label only.
+- **Crowd binary = season-level off `treated_seasons`** (exogenous policy caps), not a
+  game-level `crowd_pct<thr` (which would re-inject the endogeneity we dodged — a bad team
+  drawing a small crowd in a normal season would be mislabeled "reduced").
+- **Raw means, no controls** — that's the point (the intuitive number); "does it survive
+  controls?" is answered by 6a. Clustered-by-team SE via the one-line regression, not
+  `descriptive.py`'s naive iid SE.
+
+**Corrected headline estimates (raw, pooled) — cohere with 6a within ~10–25%:** NFL margin
+**+1.62** [−0.73, 3.96] (6a +1.71), win% +0.048; NBA margin **+1.34** [−0.72, 3.39] (6a
++1.06), win% +0.024; MLB margin −0.11 (noise, 6a −0.14), win% −0.013. DiD slightly larger
+than 6a is expected (raw vs Elo/rest/travel-adjusted). MLB slope near-flat by design
+(Phase-5 noise); per-sport CIs wide & zero-crossing (**underpowered — a finding, not a
+failure**); pooled cross-sport win-prob is where any precision lives.
+
+**Deferred Minor (cosmetic):** `plot_slope` legend swatches inherit the first-sorted sport's
+color (mlb green) not neutral gray — hollow/filled *shape* still reads; fix only if the
+figure is touched later (draw legend handles in gray).
+
 ## Status
 
-**Phase 6a COMPLETE.** `src/models/twfe.py` + `tests/test_twfe.py`; `results/tables/twfe_*.csv`
-+ `results/figures/twfe_crowd_effect.png` generated. 99/99 tests. Opus whole-branch review
-READY TO MERGE (findings = write-up honesty, all addressed in the spec). All uncommitted,
-awaiting human commit (git is user-owned).
+**Phase 6b COMPLETE.** `src/models/did.py` + `tests/test_did.py` (5 tests) + `twfe.py`
+`_exclusion_mask` extraction; `results/tables/did_{nfl,mlb,nba}.csv` + `did_cross_sport.csv`
++ `results/figures/did_hfa_shrink.png` generated. 104/104 tests. Opus whole-branch review
+READY TO MERGE (one cosmetic Minor deferred; write-up honesty items carried to Phase 8). All
+uncommitted, awaiting human commit (git is user-owned).
 
 **Deferred / next:**
-- **Phase 6b — on/off 2×2 DiD**, now the **co-primary** causal section (a time-clustered
-  treatment is a before/after by construction). Binarize crowd (full vs reduced), compare the
-  before/after change in home advantage; sanity-checks + intuitive-picture for 6a.
-- **Phase 7 — bubble decomposition + seeding placebo.** Doubles as the **disentangler** for
+- **Phase 7 — bubble decomposition + seeding placebo (NEXT).** Doubles as the **disentangler** for
   6a's un-separated "crowd + other pandemic shifts" (normal − empty ≈ crowd; empty − bubble ≈
   travel + home-park).
-- **Phase 8 — Quarto write-up.** Carry the three honesty corrections above + the
+- **Phase 8 — Quarto write-up.** Carry the three 6a honesty corrections above + the
   playoff-exclusion caveat + a **descriptive playoff-HFA subsection** (reuse
   `descriptive.summarize()` with `is_playoff==True`; blended with seeding quality → asterisk).
+  **From 6b:** present 6a (adjusted) + 6b (raw before/after) side by side; use the precise
+  "comparative interrupted time series / away-team-as-control" naming, not literal "2×2 DiD";
+  state the shared 6a/6b confound explicitly and point at Phase 7 as the only disentangler.
+  `did_hfa_shrink.png` is the intuitive centerpiece figure.
+- **Why MLB shows no/faint-wrong-sign crowd effect (write-up section, all 3 methods agree).**
+  (1) It's statistically ZERO, not a reversal — margin CI [−0.39,+0.16] p.42, win% CI
+  [−0.038,+0.013] p.33; the negative sign is noise, don't over-read it. (2) Baseball's total
+  HFA is smallest in major sports (home win% ~.53–.54 vs NFL ~.57, NBA ~.60 — WEB-VERIFY before
+  citing), and its known mechanisms are **crowd-independent**: batting last (rules edge) + park
+  familiarity (walls/sightlines/positioning) survive an empty stadium; the crowd→official-bias
+  channel that drives NFL/NBA HFA is weak in baseball. (3) Run-margin is the noisiest outcome
+  (worst signal/noise cell — Phase 5). (4) Confound is WORST in baseball: 2020–21 had more
+  home-relevant rule changes than NFL/NBA — extra-innings ghost runner (favors batting-last =
+  home), universal DH (2020), 7-inning DHs, regional 60-game schedule — inseparable in-model and
+  several push HFA the home team's way, plausibly producing the faint wrong sign. Honest claim:
+  "no detectable MLB crowd effect"; can NOT claim "crowds don't matter in baseball" (underpowered
+  + confounded). **Optional cheap check (deferred):** split MLB treated into 2020 vs 2021
+  separately — if the faint positive-HFA blip lives entirely in 2020 (rule-change season), that
+  supports rule-artifact-not-crowd. A few lines against the existing panel, no new infra.
 - **Delete ESPN caches** (`data/raw/*/espn`, ~14GB MLB + ~6GB NBA) once parquets verified —
   gitignored/local-only; only near project end (avoid re-pull risk).
+
+**Maybe-later (optional, not required — the 3-sport study is complete on its own):**
+- **Add NHL as a 4th sport.** *Why:* the study's main weakness is wide, cross-zero per-sport
+  CIs; each extra sport that lived through the empty-stadium period is an independent
+  replication that tightens the **pooled cross-sport** crowd estimate — the real power lever
+  (more *seasons* don't help; treated games are fixed by history). *Why NHL specifically:* it
+  fits the existing architecture almost for free — ~30 stable teams (team-FE + Elo hold),
+  indoor like NBA (weather null), a clean empty→partial 2020–21 shock, and almost certainly
+  the same ESPN `hockey/nhl` scoreboard+summary endpoints `_espn.py` is already parameterized
+  for → just a new `src/data/nhl.py` loader; everything downstream is already sport-blind.
+  *Before building:* run the same ~30-min attendance spike as the other sports (confirm ESPN
+  carries `gameInfo.attendance` with a real `0` for empty games). *Caveat:* more sports buy
+  precision + generalizability, NOT cleaner identification — the crowd-vs-other-2020–21-shifts
+  confound is the same pandemic hitting everyone, so only Phase 7's bubble decomposition
+  disentangles it. **Soccer is NOT a cheap add** (draws break the binary outcome, promotion/
+  relegation breaks the panel, non-US data shape) — it would be its own separate study, not a
+  4th loader.

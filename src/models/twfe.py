@@ -38,16 +38,20 @@ def _restricted_seasons(treated: list[int]) -> set[int]:
     return set(treated) | {min(treated) - 1, max(treated) + 1}
 
 
-def _prep(panel: pd.DataFrame) -> pd.DataFrame:
-    """Drop excluded games (neutral/relocated/bubble/playoff) and add the two
-    derived diff controls. Sport-blind."""
-    excl = (
+def _exclusion_mask(panel: pd.DataFrame) -> pd.Series:
+    """Games dropped from every causal model: neutral/relocated/bubble/playoff.
+    Single source of truth shared by 6a (twfe) and 6b (did)."""
+    return (
         panel["neutral_site"].fillna(False)
         | panel["relocated_home"].fillna(False)
         | panel["is_bubble"].fillna(False)
         | panel["is_playoff"].fillna(False)
     )
-    df = panel[~excl].copy()
+
+
+def _prep(panel: pd.DataFrame) -> pd.DataFrame:
+    """Drop excluded games and add the two derived diff controls. Sport-blind."""
+    df = panel[~_exclusion_mask(panel)].copy()
     df["elo_diff"] = df["home_elo"] - df["away_elo"]
     # rest_days are nullable Int64 (first game of season = NA) -> Float64, listwise-dropped in fit
     df["rest_diff"] = df["home_rest_days"] - df["away_rest_days"]
