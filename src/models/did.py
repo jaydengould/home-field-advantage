@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from src.models.twfe import _exclusion_mask, _restricted_seasons, SPORT_COLORS
 
-SPORTS = ["nfl", "mlb", "nba"]
+SPORTS = ["nfl", "mlb", "nba", "nhl"]
 
 
 def fit(panel, outcome, sample="pooled", treated_seasons=None):

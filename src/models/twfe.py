@@ -25,11 +25,11 @@ import matplotlib
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt  # noqa: E402
 
-SPORTS = ["nfl", "mlb", "nba"]
+SPORTS = ["nfl", "mlb", "nba", "nhl"]
 TREATMENT = "crowd_pct"
 CONTROLS = ["crowd_pct", "elo_diff", "rest_diff", "away_travel_km"]
-# dataviz skill categorical slots 1-3, matches src/viz/descriptive.py
-SPORT_COLORS = {"nfl": "#2a78d6", "mlb": "#008300", "nba": "#e87ba4"}
+# dataviz skill categorical slots 1-4, matches src/viz/descriptive.py
+SPORT_COLORS = {"nfl": "#2a78d6", "mlb": "#008300", "nba": "#e87ba4", "nhl": "#e08b00"}
 
 
 def _restricted_seasons(treated: list[int]) -> set[int]:
@@ -58,19 +58,23 @@ def _prep(panel: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def fit(panel, outcome, sample="pooled", treated_seasons=None, extra_controls=()):
+def fit(panel, outcome, sample="pooled", treated_seasons=None, extra_controls=(),
+        drop_controls=()):
     """Fit the TWFE spec for one sport/outcome/sample. Pure (no disk/net).
 
     outcome in {"home_margin", "home_win"}; home_win runs as a linear
     probability model (0/1). Returns a flat dict of the crowd_pct coefficient
     with cluster-robust SE/CI plus the control coefficients.
+
+    drop_controls removes named controls from the default set (the symmetric
+    counterpart to extra_controls); used by the NHL travel-confound diagnostic.
     """
     sport = panel["sport"].iloc[0]
     df = _prep(panel)
     if sample == "restricted":
         df = df[df["season"].isin(_restricted_seasons(treated_seasons))]
 
-    controls = list(CONTROLS) + list(extra_controls)
+    controls = [c for c in CONTROLS if c not in drop_controls] + list(extra_controls)
     d = df[[outcome, "home_team", "season"] + controls].copy()
     d[outcome] = d[outcome].astype(float)          # bool/int/Int64 -> float (LPM safe)
     d[controls] = d[controls].astype(float)
@@ -155,6 +159,42 @@ def main() -> None:
     base_coef = results.loc[base_mask, "coef"].iloc[0]
     print(f"[NFL sensitivity] +closing_spread: crowd coef {sens['coef']:.3f} "
           f"(base {base_coef:.3f})")
+
+    # NHL-only diagnostic: the 2020-21 season ran realigned regional divisions
+    # (incl. an all-Canadian division), so crowd and travel fell together. Measure
+    # the confound rather than assume away_travel_km absorbs it. Reported either way.
+    nhl = _prep(panels["nhl"])
+    treated_nhl = cfg["nhl"]["treated_seasons"]
+    t = nhl[nhl["season"].isin(treated_nhl)][["crowd_pct", "away_travel_km"]].dropna()
+    rho = float(t["crowd_pct"].corr(t["away_travel_km"])) if len(t) > 2 else float("nan")
+
+    diag_rows = []
+    for outcome in ["home_margin", "home_win"]:
+        base = next(r for r in rows if r["sport"] == "nhl"
+                    and r["outcome"] == outcome and r["sample"] == "pooled")
+        drop = fit(panels["nhl"], outcome, "pooled", treated_nhl,
+                   drop_controls=["away_travel_km"])
+        diag_rows.append({
+            "outcome": outcome,
+            "corr_crowd_travel_treated": rho,
+            "coef_with_travel": base["coef"],
+            "coef_without_travel": drop["coef"],
+            "delta": drop["coef"] - base["coef"],
+            # n_obs for BOTH fits: dropping a control also drops it from dropna(), so
+            # an unequal sample would let a sample shift masquerade as a coef shift.
+            # These must match; if they do not, the diagnostic is not interpretable.
+            "n_obs_with_travel": base["n_obs"],
+            "n_obs_without_travel": drop["n_obs"],
+        })
+        print(f"[NHL travel diagnostic] {outcome}: corr(crowd,travel|treated)={rho:+.3f} "
+              f"coef {base['coef']:+.3f} -> {drop['coef']:+.3f} "
+              f"(delta {drop['coef'] - base['coef']:+.3f}) "
+              f"n {base['n_obs']} -> {drop['n_obs']}")
+        if base["n_obs"] != drop["n_obs"]:
+            print("  ⚠️  sample changed when dropping travel — coef delta is NOT a "
+                  "clean control effect; investigate before interpreting")
+    pd.DataFrame(diag_rows).to_csv(
+        "results/tables/twfe_nhl_travel_diagnostic.csv", index=False)
 
     plot_effect(results).savefig(
         "results/figures/twfe_crowd_effect.png", dpi=150, bbox_inches="tight")

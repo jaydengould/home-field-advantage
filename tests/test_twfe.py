@@ -93,6 +93,46 @@ def test_fit_lpm_outcome_runs_on_binary():
     assert res["outcome"] == "home_win"
 
 
+def test_drop_controls_removes_only_the_named_control():
+    # The NHL travel diagnostic refits dropping away_travel_km. In _synth, travel is
+    # independent noise, so dropping it must NOT move the planted beta=3.0 much.
+    # Also pins the property the diagnostic depends on: dropping a control must not
+    # silently change the estimation sample (see below).
+    import src.models.twfe as twfe
+
+    panel = _synth(beta=3.0)
+    base = twfe.fit(panel, "home_margin", "pooled", [2020, 2021])
+    reduced = twfe.fit(panel, "home_margin", "pooled", [2020, 2021],
+                       drop_controls=["away_travel_km"])
+
+    assert "coef_away_travel_km" in base                 # present in the full spec
+    assert "coef_away_travel_km" not in reduced          # genuinely dropped
+    assert "coef_elo_diff" in reduced                    # other controls survive
+    assert twfe.CONTROLS == ["crowd_pct", "elo_diff", "rest_diff", "away_travel_km"]
+    assert abs(reduced["coef"] - base["coef"]) < 0.5     # independent control -> small move
+
+
+def test_n_obs_tracks_estimation_sample_when_dropped_control_has_nans():
+    # A dropped control also leaves fit()'s dropna() column set, so the reduced fit
+    # CAN run on more rows — which would let a sample shift masquerade as a
+    # coefficient shift and silently invalidate the NHL travel diagnostic. That is
+    # why the diagnostic records n_obs for BOTH fits and warns when they differ.
+    #
+    # Asserting equality on _synth would be VACUOUS: the fixture has no NaNs, so
+    # n_obs matches under any implementation. Inject NaNs so the assertion can fail
+    # if n_obs ever stops reflecting the true estimation sample.
+    panel = _synth(beta=3.0)
+    panel.loc[panel.index[:40], "away_travel_km"] = np.nan
+
+    base = fit(panel, "home_margin", "pooled", [2020, 2021])
+    reduced = fit(panel, "home_margin", "pooled", [2020, 2021],
+                  drop_controls=["away_travel_km"])
+
+    assert base["n_obs"] == len(panel) - 40      # the 40 NaN rows are listwise-dropped
+    assert reduced["n_obs"] == len(panel)        # dropping the control restores them
+    assert reduced["n_obs"] > base["n_obs"]      # the hazard the diagnostic guards against
+
+
 def test_plot_effect_returns_figure():
     from src.models.twfe import plot_effect
     rows = pd.DataFrame([

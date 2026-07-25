@@ -14,12 +14,13 @@ import matplotlib
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt  # noqa: E402
 
-SPORTS = ["nfl", "mlb", "nba"]
+SPORTS = ["nfl", "mlb", "nba", "nhl"]
 
 # dataviz skill categorical slots 1-3 (blue/green/magenta), validated colorblind-safe
 # via scripts/validate_palette.js (worst adjacent CVD ΔE 17.6, normal-vision ΔE 29.0).
 # Magenta sits below the 3:1 contrast floor -> relief rule -> legend + markers below.
-SPORT_COLORS = {"nfl": "#2a78d6", "mlb": "#008300", "nba": "#e87ba4"}
+# nhl (slot 4, amber) matches src/models/twfe.py SPORT_COLORS for cross-figure consistency.
+SPORT_COLORS = {"nfl": "#2a78d6", "mlb": "#008300", "nba": "#e87ba4", "nhl": "#e08b00"}
 
 
 def _clean_home(panel: pd.DataFrame) -> pd.DataFrame:

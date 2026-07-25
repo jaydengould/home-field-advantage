@@ -102,3 +102,36 @@ nba:
   TOR: [43.64, -79.38]
   UTAH: [40.77, -111.90]
   WSH: [38.90, -77.02]
+nhl:
+  "ANA": [33.81, -117.88]   # Honda Center, Anaheim
+  "ARI": [33.53, -112.26]   # Gila River Arena, Glendale (Mullett/Tempe 2023 is ~30km — noise)
+  "BOS": [42.37, -71.06]    # TD Garden
+  "BUF": [42.87, -78.88]    # KeyBank Center
+  "CGY": [51.04, -114.05]   # Scotiabank Saddledome
+  "CAR": [35.80, -78.72]    # PNC Arena, Raleigh
+  "CHI": [41.88, -87.67]    # United Center
+  "COL": [39.75, -105.01]   # Ball Arena, Denver
+  "CBJ": [39.97, -83.01]    # Nationwide Arena
+  "DAL": [32.79, -96.81]    # American Airlines Center
+  "DET": [42.34, -83.05]    # Little Caesars Arena
+  "EDM": [53.55, -113.50]   # Rogers Place
+  "FLA": [26.16, -80.33]    # Amerant Bank Arena, Sunrise
+  "LA":  [34.04, -118.27]   # Crypto.com Arena
+  "MIN": [44.94, -93.10]    # Xcel Energy Center, St Paul
+  "MTL": [45.50, -73.57]    # Bell Centre
+  "NSH": [36.16, -86.78]    # Bridgestone Arena
+  "NJ":  [40.73, -74.17]    # Prudential Center, Newark
+  "NYI": [40.70, -73.75]    # Long Island — Barclays/Nassau/UBS all within ~25km
+  "NYR": [40.75, -73.99]    # Madison Square Garden
+  "OTT": [45.30, -75.93]    # Canadian Tire Centre
+  "PHI": [39.90, -75.17]    # Wells Fargo Center
+  "PIT": [40.44, -79.99]    # PPG Paints Arena
+  "SJ":  [37.33, -121.90]   # SAP Center
+  "SEA": [47.62, -122.35]   # Climate Pledge Arena (season 2022+)
+  "STL": [38.63, -90.20]    # Enterprise Center
+  "TB":  [27.94, -82.45]    # Amalie Arena
+  "TOR": [43.64, -79.38]    # Scotiabank Arena
+  "VAN": [49.28, -123.11]   # Rogers Arena
+  "VGK": [36.10, -115.18]   # T-Mobile Arena, Las Vegas
+  "WSH": [38.90, -77.02]    # Capital One Arena
+  "WPG": [49.89, -97.14]    # Canada Life Centre

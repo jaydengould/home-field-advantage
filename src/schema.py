@@ -22,7 +22,7 @@ class Col:
 
 
 COLUMNS: dict[str, Col] = {
-    "sport":      Col("str", values=frozenset({"mlb", "nba", "nfl"})),
+    "sport":      Col("str", values=frozenset({"mlb", "nba", "nfl", "nhl"})),
     "game_id":    Col("str"),
     "season":     Col("int"),
     "date":       Col("date"),

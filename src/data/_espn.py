@@ -1,4 +1,4 @@
-"""Shared ESPN data-access helpers for the per-sport loaders (NFL/MLB/NBA).
+"""Shared ESPN data-access helpers for the per-sport loaders (NFL/MLB/NBA/NHL).
 
 Single source of truth for the sport-blind capacity/coverage math so every sport
 computes crowd_pct the same way, plus the cached ESPN fetch + scoreboard walk used
@@ -16,7 +16,8 @@ from typing import Iterator
 import requests
 
 _RAW_ROOT = Path("data/raw")
-SPORT_PATH = {"nfl": "football/nfl", "mlb": "baseball/mlb", "nba": "basketball/nba"}
+SPORT_PATH = {"nfl": "football/nfl", "mlb": "baseball/mlb",
+              "nba": "basketball/nba", "nhl": "hockey/nhl"}
 _SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/{path}/summary?event={eid}"
 _SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/{path}/scoreboard?dates={d}"
 

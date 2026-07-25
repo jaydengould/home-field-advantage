@@ -153,7 +153,7 @@ def build(sport: str) -> pd.DataFrame:
 
 
 def main() -> None:
-    for sport in ("nfl", "mlb", "nba"):
+    for sport in ("nfl", "mlb", "nba", "nhl"):
         panel = build(sport)
         acc, brier = elo_accuracy(panel, _elo_params(sport)["hfa"])
         print(f"{sport}: rows={len(panel)} elo_accuracy={acc:.3f} brier={brier:.3f}")

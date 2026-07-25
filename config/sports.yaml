@@ -18,3 +18,12 @@ nba:
                                  # season 2020's non-bubble games are full-crowd pre-COVID, and
                                  # its empty games are the Orlando bubble (excluded via is_bubble)
   elo: {k: 10, hfa: 100, carryover: 0.75}
+nhl:
+  load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
+  treated_seasons: [2021]        # only 2020-21 (season 2021) is the empty->partial reopening;
+                                 # season 2020's pre-March games are full-crowd, and its empty
+                                 # games are the Aug-Sep Toronto/Edmonton bubble (is_bubble)
+  # 538 NHL Elo (Neil Paine): K=6, home ice 50 Elo pts, retain 70% between seasons.
+  # Our ln(|margin|+1) MOV multiplier runs 86-95% of 538's across 1-5 goal margins,
+  # so K transfers directly (unlike NBA, which needed halving).
+  elo: {k: 6, hfa: 50, carryover: 0.70}

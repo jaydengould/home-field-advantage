@@ -1,6 +1,6 @@
 # home-field-advantage
 
-A cross-sport study of home-field advantage across MLB, NBA, and NFL with two
+A cross-sport study of home-field advantage across MLB, NBA, NFL, and NHL with two
 parts: (1) **quantify** it descriptively (home win %, scoring margin) and
 (2) estimate the **crowd-attributable slice** of it, using the COVID
 empty/partial-stadium period (**full 2020–21 restriction window**) as a natural
@@ -11,7 +11,14 @@ paper-quality write-up rendered via Quarto (PDF + HTML).
 
 Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
 
-**Status: in development — Phases 1–6b complete (all three loaders build validated panels; sport-blind features populate the model-ready `data/processed/` panels; descriptive HFA quantified with a data-sanity gate; the causal TWFE dose-response engine and the co-primary on/off DiD both estimate the crowd effect per sport, in agreement). Phase 7 (bubble decomposition) next. 104/104 tests.**
+**Status: in development — Phases 1–6b complete plus NHL added as a fourth sport (all four loaders build validated panels; sport-blind features populate the model-ready `data/processed/` panels; descriptive HFA quantified with a data-sanity gate; the causal TWFE dose-response engine and the co-primary on/off DiD both estimate the crowd effect per sport). Phase 7 cancelled as a code phase (folded into the Phase 8 write-up — see Roadmap). Phase 8 (Quarto write-up) next. 122/122 tests.**
+
+**Headline result (four sports, crowd effect on home win probability):** NFL **+0.046**, NBA
+**+0.015**, NHL **+0.007**, MLB **−0.019** — every per-sport CI crosses zero. The honest
+conclusion is *four independent replications, each individually underpowered, all centred near
+zero, none able to exclude a crowd effect of the size NFL's point estimate implies.* A shared,
+unmeasured 2020–21 home-specific confound remains, and **pooling across sports does not reduce
+it** (the sports share a bias, not just independent noise).
 
 ## Progress
 
@@ -100,8 +107,11 @@ Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
   - **Honesty caveats carried to the write-up:** (1) there is **no within-season dose curve**
     for any sport (within-2020 NFL dose↔margin corr ≈ 0) — all three are effectively on/off;
     (2) the estimate conflates the crowd with **any other 2020–21 league-wide shift** (the
-    trend removes only smooth drift, and a treated-season dummy is collinear with the crowd),
-    so **Phase 7's bubble decomposition is the disentangler**; (3) the NFL betting-spread
+    trend removes only smooth drift, and a treated-season dummy is collinear with the crowd) —
+    ⚠️ this was originally expected to be resolved by Phase 7's bubble decomposition, but that
+    turned out to be false (the bubble sits *inside* the pandemic window and swaps one bundled
+    treatment for another), so **the confound is unresolved and is stated as a limitation**;
+    (3) the NFL betting-spread
     sensitivity is a **post-treatment bad control** (the spread already prices in the empty
     stadium), so its attenuation is mechanical, not fragility. This also promotes **Phase 6b
     (on/off DiD) to co-primary** — the natural estimator for a treatment that hit everyone at
@@ -117,13 +127,47 @@ Design: `docs/superpowers/specs/2026-06-29-home-field-advantage-design.md`.
     once), but the outcome is already `home − away`, so the **away team is the implicit control
     group** and other seasons are the **control *period***. It nets out symmetric league-wide
     2020–21 shifts but not home-specific ones, so it carries **the same confound as 6a** — it's
-    the intuitive picture and a sanity check, not cleaner identification (Phase 7 disentangles).
+    the intuitive picture and a sanity check, not cleaner identification. (Nothing in this study
+    disentangles it — see the Phase 7 row in the Roadmap.)
   - **Estimates agree with 6a within ~10–25%:** a full crowd is worth **NFL +1.6 pts** of
     margin (≈ +4.8 pp win prob), **NBA +1.3 pts** (≈ +2.4 pp), **MLB ≈ 0** (a faint,
     non-significant wrong-sign — statistically zero, as Phase 5 predicted). The dumbbell figure
     (`did_hfa_shrink.png`) makes the shrink the subject: NFL/NBA home advantage collapses toward
     zero without fans, MLB is a flat stub. Cross-method agreement (descriptive → TWFE → DiD)
     is itself reassuring; per-sport CIs remain wide and cross zero (underpowered, not a failure).
+- ✅ **NHL — fourth sport** → `data/interim/nhl.parquet` + `data/processed/nhl.parquet`
+  (2018–2023, **7,678 games, 0 dropped**, 32 teams). Added because the study's binding weakness is
+  wide, zero-crossing per-sport CIs, and each extra league that lived through the empty-stadium
+  period is an independent replication. Reuses `_espn.py` unchanged; four NHL-specific deltas live
+  in `src/data/nhl.py`: a **32-team whitelist** (robust to however ESPN types exhibitions), a
+  **modal-venue rule** for `relocated_home` (catches Winter Classic / Stadium Series / Heritage
+  Classic / Lake Tahoe outdoor games *and* the Global Series in Stockholm, Helsinki, Gothenburg,
+  Prague and Tampere with no hand-maintained list), a **date-based `is_bubble`**, and a wider
+  season window (2020's playoffs ran to 28 Sep; 2021 ran Jan–Jul). OT/shootout games keep ESPN's
+  final score — 538's NHL Elo found *"no predictive power in differentiating between one-goal
+  results in regulation versus overtime/shootouts"*. `crowd_pct` mean by season:
+  `.94 .94 .84 .10 .87 .94` — **season 2021 had 571 of 952 games played completely empty**, the
+  strongest treatment dose in the study. Elo accuracy `0.585` (band pre-registered at .57–.58
+  before the data existed, so a legitimately low hockey number couldn't be mistaken for a bug).
+  - **Result — NHL shows no crowd effect, despite having the strongest treatment.** TWFE pooled
+    margin **+0.008** [−0.219, +0.234]; win% **+0.007** [−0.038, +0.051]. DiD agrees to within
+    0.015 (margin −0.008, win% +0.006) — the tightest cross-estimator agreement of any sport.
+  - **The null survived attack from three directions:** removing the linear season trend entirely
+    moves win% by a fifth of an SE; dropping the Omicron-affected 2022 season moves it by 0.006;
+    un-flagging the 39 New York Islanders dual-arena games moves it by 0.003. It is genuine, not
+    a specification artifact.
+  - **But it is underpowered, and "clean null" would overstate it:** NHL's minimum detectable
+    effect at 80% power is ~6.3 pp, and its CI *contains* both NFL's +0.046 and NBA's +0.015. It is
+    consistent with the other sports' nulls, not corroboration of them.
+  - **Honest findings carried to the write-up:** (a) the **within-2021 dose curve** — NHL's whole
+    selling point — comes out **wrong-signed** (margin −1.41, p=.10) while raw means point the
+    other way, and the sign flip on adding team fixed effects *is* the endogeneity lesson the
+    design exists for; (b) under **full season FE** NHL's win% coefficient is +0.076, the largest
+    in the study, because NHL is where the collinearity argument is weakest (R² .878 vs NFL's
+    .974) — the frozen spec is still correct, but the sensitivity is disclosed with its rebuttal;
+    (c) season **2022 is not a clean control** (Omicron put Canadian arenas at 52% capacity
+    Dec–Feb) though the effect is immaterial; (d) 41.5% of NHL games are decided by exactly one
+    goal, so **goal margin is the weakest outcome in the study** — win% carries NHL.
 
 ## Roadmap (working, subject to change)
 
@@ -139,8 +183,26 @@ NFL is the pilot — prove the vertical slice on one sport, then the others conf
 | 5 | Descriptive HFA (win% / margin by sport & season) — data sanity gate | ✅ done |
 | 6a | Causal — TWFE dose-response (the engine; team FE + trend, not two-way FE) | ✅ done |
 | 6b | Causal — on/off DiD (**co-primary**, not back-pocket — treatment is time-clustered) | ✅ done |
-| 7 | Bubble decomposition + seeding-games placebo | ⬅ next |
+| — | **NHL added as a fourth sport** (independent replication; tightens sampling error only) | ✅ done |
+| 7 | ~~Bubble decomposition + seeding-games placebo~~ → **replaced by pre-write-up consolidation** | ⬅ next (spec approved) |
 | 8 | Quarto write-up → PDF + HTML | |
+
+**Phase 7 is now a pre-write-up consolidation phase** (spec:
+`docs/superpowers/specs/2026-07-25-pre-writeup-consolidation-design.md`). Three workstreams:
+(A) a `sensitivity.py` module making five paper-bound analyses reproducible — they currently
+exist only as prose; (B) a **literature-positioning pass**, because the study's near-zero
+findings sit in tension with a COVID ghost-game literature in which *no* study reported
+increased home advantage, and the open question is whether we are simply underpowered relative
+to studies that found effects; (C) paper-facing and correctness fixes only.
+
+**Why Phase 7 was cancelled as a code phase** (it becomes a short, explicitly-hedged subsection
+of the Phase 8 write-up, computed inline): the seeding placebo is n=88 with a CI of roughly
+[−1.0, +4.3], which contains both zero *and* full normal-season home advantage — a test that
+cannot fail. The decomposition's second row comes out wrong-signed. And its stated purpose was
+mistaken: the bubble is **not** a disentangler for the 2020–21 confound, because it sits *inside*
+the pandemic window and swaps one bundled treatment for another rather than providing a clean
+contrast. NHL's bubble doesn't rescue it either — all 130 games are playoffs, hence
+quality-confounded, so they can feed neither the placebo nor the regular-season decomposition.
 
 Each phase is its own spec → plan → build loop (see `docs/superpowers/`).
 
@@ -175,25 +237,29 @@ gitignored — a fresh clone re-fetches (loaders) then rebuilds (features).
 .venv/bin/python -m src.data.nfl              # → data/interim/nfl.parquet
 .venv/bin/python -m src.data.mlb              # → data/interim/mlb.parquet   (long: see note)
 .venv/bin/python -m src.data.nba              # → data/interim/nba.parquet   (long: see note)
+.venv/bin/python -m src.data.nhl              # → data/interim/nhl.parquet   (long: see note)
 .venv/bin/python -m src.data.mlb --smoke      # quick real-data dose check, no parquet write
 .venv/bin/python -m src.data.nba --smoke      # quick 2020+2021 dose check (bubble + reopening ramp)
+.venv/bin/python -m src.data.nhl --smoke      # quick 2020+2021 dose check (bubble empty + 2021 caps)
 
 # 2. Features → data/processed/ (reads interim, no ESPN fetch; prints the Elo accuracy gate)
-.venv/bin/python -m src.features.build        # → data/processed/{nfl,mlb,nba}.parquet
+.venv/bin/python -m src.features.build        # → data/processed/{nfl,mlb,nba,nhl}.parquet
 
 # 3. Descriptive HFA → results/ (reads processed; prints the PASS/CHECK sanity gate)
 .venv/bin/python -m src.viz.descriptive       # → results/tables/descriptive_hfa.csv + results/figures/hfa_by_season.png
 
-# 4. Causal TWFE dose-response → results/ (reads processed; prints per-sport crowd coefs + NFL spread sensitivity)
-.venv/bin/python -m src.models.twfe           # → results/tables/twfe_{nfl,mlb,nba}.csv, twfe_cross_sport.csv + results/figures/twfe_crowd_effect.png
+# 4. Causal TWFE dose-response → results/ (per-sport crowd coefs + NFL spread & NHL travel diagnostics)
+.venv/bin/python -m src.models.twfe           # → results/tables/twfe_{nfl,mlb,nba,nhl}.csv, twfe_cross_sport.csv, twfe_nhl_travel_diagnostic.csv + results/figures/twfe_crowd_effect.png
 
 # 5. Causal on/off DiD → results/ (reads processed; prints the raw before/after HFA per sport)
-.venv/bin/python -m src.models.did            # → results/tables/did_{nfl,mlb,nba}.csv, did_cross_sport.csv + results/figures/did_hfa_shrink.png
+.venv/bin/python -m src.models.did            # → results/tables/did_{nfl,mlb,nba,nhl}.csv, did_cross_sport.csv + results/figures/did_hfa_shrink.png
 ```
 
-**Note on the long pulls (MLB ~14.5k games, NBA ~7.9k):** a full pull is thousands of
+**Note on the long pulls (MLB ~14.5k games, NBA ~7.9k, NHL ~7.7k):** a full pull is thousands of
 ESPN requests, and ESPN soft-rate-limits sustained fetching (transient 502s). The loader
 retries with backoff and tolerates the rare unlucky game (counted as missing; a >5%
 coverage gate guards systemic loss), so a cold full pull takes ~hours and may need a few
 cache-warm re-runs to complete. The cache is immutable/write-once, so each re-run resumes
-where it left off and subsequent runs are fast.
+where it left off and subsequent runs are fast. Measured throughput is roughly **30 requests
+per minute** (the 0.7 s throttle plus request latency), so budget accordingly — NHL's full pull
+took ~3 hours and 3.1 GB of cache.

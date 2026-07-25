@@ -7,7 +7,7 @@ CONFIG = Path(__file__).resolve().parents[1] / "config" / "sports.yaml"
 
 def test_config_has_three_sports_with_treated_seasons():
     cfg = yaml.safe_load(CONFIG.read_text())
-    assert set(cfg) == {"nfl", "mlb", "nba"}
+    assert set(cfg) == {"nfl", "mlb", "nba", "nhl"}
     for sport, body in cfg.items():
         seasons = body["treated_seasons"]
         assert isinstance(seasons, list) and seasons, f"{sport}: empty treated_seasons"
@@ -31,7 +31,7 @@ def test_elo_params_present_for_all_sports():
     import yaml
     from pathlib import Path
     cfg = yaml.safe_load(Path("config/sports.yaml").read_text())
-    for sport in ("nfl", "mlb", "nba"):
+    for sport in ("nfl", "mlb", "nba", "nhl"):
         elo = cfg[sport]["elo"]
         assert {"k", "hfa", "carryover"} <= set(elo)
         assert 0.0 < elo["carryover"] <= 1.0

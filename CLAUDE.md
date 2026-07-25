@@ -2,7 +2,7 @@
 
 ## Goal
 
-Two-part study across MLB, NBA, and NFL: (1) **quantify** home-field advantage
+Two-part study across MLB, NBA, NFL, and NHL: (1) **quantify** home-field advantage
 descriptively (home win %, scoring margin) and (2) estimate the **causal
 crowd-attributable slice** of it, using the COVID empty/partial-stadium period
 (**full 2020–21 restriction window**) as a natural experiment. The modeled
@@ -22,7 +22,7 @@ write-up (PDF + HTML).
 
 ## Core design principles
 
-1. **The sport is just a PARAMETER.** All three sports normalize into a single
+1. **The sport is just a PARAMETER.** All four sports normalize into a single
    unified game-level panel schema. Sport-specific logic lives **only** in
    `src/data/`. Everything downstream — feature building, modeling, plots — is
    sport-blind and written once.
@@ -92,11 +92,15 @@ the "done when" check — is in the spec §8; this list is the quick reference.
    `config/sports.yaml` with per-sport COVID windows.
 2. **Pilot loader (NFL) → panel** — one sport emitting the validated schema.
 3. **Remaining two loaders (MLB, NBA)** — conform to the proven contract.
+   *(NHL was added later as a 4th sport on the same contract — see its section below.)*
 4. **Sport-blind features** — Elo, `crowd_pct`, rest, travel.
 5. **Descriptive HFA** — win% / margin by sport & season + figures (data sanity gate).
 6a. **Causal — TWFE dose-response** (the engine).
-6b. **Causal — back-pocket on/off DiD** (intuitive section + sanity check).
-7. **Bubble decomposition + placebo**.
+6b. **Causal — back-pocket on/off DiD** — *promoted to co-primary during 6a; the treatment is
+    time-clustered, so the on/off comparison is the natural estimator, not a back-pocket.*
+7. ~~**Bubble decomposition + placebo**~~ — **CANCELLED as a code phase (2026-07-24)**; folded
+   into the Phase 8 write-up as a hedged subsection. It was never the disentangler it was
+   billed as. See the Status section.
 8. **Quarto write-up** → PDF + HTML.
 
 **How to build:** today's spec is the umbrella design, not a single build script.
@@ -104,8 +108,9 @@ Run `writing-plans` + execution **per phase** (the spec is too big for one plan)
 each phase is its own small spec→plan→build loop. Do NOT plan the whole project
 at once.
 
-**Next session:** run `writing-plans` for **Phase 1 only**, then execute it.
-No analysis code exists yet.
+*(The "next session" note that stood here was from the original design session, when no analysis
+code existed. Current state lives in the **Status** section at the bottom of this file — read that
+first.)*
 
 ## Pre-Phase-1 attendance spike (run 2026-06-29) — PASS
 
@@ -624,18 +629,251 @@ failure**); pooled cross-sport win-prob is where any precision lives.
 color (mlb green) not neutral gray — hollow/filled *shape* still reads; fix only if the
 figure is touched later (draw legend handles in gray).
 
+## NHL — 4th sport (done 2026-07-25) — COMPLETE
+
+Brainstorm → spec → plan → subagent-driven build (6 tasks, per-task reviews). Spec:
+`docs/superpowers/specs/2026-07-24-nhl-fourth-sport-design.md`; plan:
+`docs/superpowers/plans/2026-07-24-nhl-fourth-sport.md`. **122/122 tests.** All uncommitted.
+
+**Built:** `src/data/nhl.py` + `tests/test_nhl_loader.py` (16 tests); `_espn.SPORT_PATH["nhl"]`;
+`schema.py` sport values gained `"nhl"`; `config/sports.yaml` nhl block;
+`config/venue_coords.yaml` nhl block (32 teams); `"nhl"` added to the 4 downstream sport lists
++ `SPORT_COLORS` amber `#e08b00` (in **both** `twfe.py` and `descriptive.py`);
+`twfe.fit(..., drop_controls=())` + NHL travel diagnostic in `twfe.main()`.
+
+**Four NHL-specific deltas** (everything else mirrors `nba.py`):
+1. **32-team WHITELIST** instead of an all-star blacklist — robust to however ESPN types
+   exhibitions. (The MLB/NBA all-star leak was `season_type=2`.) `ARI` in, `UTAH` out —
+   ESPN's teams endpoint lists *current* teams and is wrong for a 2018–23 window.
+2. **`relocated_home` = modal-venue rule** (`venue_id != value_counts().idxmax()` per
+   `(home_team, season)`). Catches Winter Classic / Stadium Series / Heritage Classic /
+   Lake Tahoe outdoor games AND the NHL Global Series (Stockholm, Helsinki, Gothenburg,
+   Prague, Tampere) with no hand-maintained list.
+3. **`is_bubble` is DATE-based**: `season==2020 & date>=2020-08-01` (Toronto/Edmonton hubs,
+   1 Aug–28 Sep 2020). ⚠️ **CORRECTION (final review): the spec's claim that ESPN's
+   `neutralSite=True` excludes the bubble for free is WRONG.** Measured: only **72 of 130**
+   bubble games carry `neutral_site=True`; 58 do not. The exclusion holds today only because
+   all 130 are `is_playoff=True`. **The date rule is load-bearing, not optional bookkeeping.**
+   Phase 8's bubble/regime subsection must filter on `is_bubble`, NOT `neutral_site` — the
+   latter silently admits 58 hub games.
+4. **Wider season window**: Sept 1 (y−1) → **Sept 30** (y). Needed twice — season 2020's
+   playoffs ran to 28 Sep 2020 and season 2021 ran Jan–Jul 2021. NBA's Nov 30 end would
+   have silently truncated both.
+
+**Decisions settled:**
+- **OT/shootout games keep ESPN's final score, unchanged.** No zeroing, no regulation-time
+  outcome, no schema change. Corroborated by 538's NHL Elo, which tested exactly this and
+  found **"no predictive power in differentiating between one-goal results in regulation
+  versus overtime/shootouts"** ([Neil Paine](https://neilpaine.substack.com/p/how-my-nhl-elo-ratings-and-forecast)) — cite in Phase 8.
+- **Elo (538-sourced, web-verified): `k: 6, hfa: 50, carryover: 0.70`.** K transfers directly
+  (our `ln(|margin|+1)` runs 86–95% of 538's `0.6686·ln(MOV)+0.8048` over 1–5 goals — the
+  NFL/MLB case, not NBA's). **Documented deviation:** 538 reverts NHL toward 1505; we use a
+  sport-blind 1500 (≈0.7pp of win prob).
+- `closing_spread` null (puck line is a fixed ±1.5); `is_dome=True`, weather null.
+- `treated_seasons: [2021]`, `load_seasons: [2018, 2023]` (end-year labels, NBA pattern).
+
+**Data (measured):** 7678 games, **0 dropped** (100% ESPN attendance coverage), 32 teams,
+3.1 GB cache. `crowd_pct` by season: 2018 .942 · 2019 .938 · 2020 .835 (truncated 11 Mar) ·
+**2021 .100** · 2022 .865 · 2023 .937. Season 2021 = 952 games, **571 completely empty (60%)**.
+⚠️ The "up to .976" figure is a **playoff game and is EXCLUDED from every model.** In the actual
+**estimation sample**, 2021 `crowd_pct` runs **0 → 0.400** with the 99th percentile at **0.283**.
+The earlier "richest within-season dose variation in the study" selling point was measured on
+excluded games and is inflated — the honest version is below.
+**`one_goal_share = 0.415`** (measured; replaces the spec's unverified "~10%" shootout guess).
+Elo accuracy **0.585** / Brier .239 — PASS (pre-registered band .57–.58, bug floor .52).
+Four-sport Elo ranking NBA .639 > NFL .627 > NHL .585 > MLB .577 = correct ordering.
+
+**⚠️ THE RESULT — NHL is a clean null, and it is the sport with the strongest treatment.**
+
+| Estimator | margin | win% |
+|---|---|---|
+| Descriptive pooled full-crowd | +0.254 (SE .033) | .538 (SE .0063) |
+| TWFE pooled | **+0.008** [−0.219, +0.234] p=.947 | **+0.007** [−0.038, +0.051] p=.772 |
+| DiD pooled | **−0.008** [−0.227, +0.211] p=.941 | **+0.006** [−0.038, +0.050] p=.791 |
+
+6a and 6b agree to within 0.015 — the tightest cross-estimator agreement of any sport.
+Descriptive gate = `[CHECK]` (no margin dip), same as MLB. **NHL HFA drifts downward across the
+window independent of COVID** (win% .563 → .536 → .531 → **.532 (treated)** → .537 → .523).
+⚠️ NOT monotonic — **2 of the 5 steps are UP** (+.0009, +.0047), and 2018→2019 alone (−.0271) is
+larger than the rest of the window combined. Do not write "monotonic"; a referee plotting six
+points will catch it. The substantive claim IS verified: a linear trend through the five control
+seasons predicts 2021 win% .5348 vs actual **.5323 — a gap of 0.15 SE**. The empty-arena season
+sits *on* the trend, not below it.
+
+**The `season_trend` term is NOT absorbing the treatment** (the obvious objection, tested):
+
+| trend spec | margin | win% |
+|---|---|---|
+| no trend at all | +0.0296 (se .121) | +0.0118 (se .023) |
+| **linear (shipped)** | **+0.0077** | **+0.0066** |
+| quadratic | +0.0316 | +0.0025 |
+
+Removing the trend entirely moves win% by 0.005 — a fifth of an SE. Put this table in Phase 8;
+it pre-empts the first question any referee will ask.
+
+**Travel diagnostic (pre-committed, reported either way) — confound is empirically minor.**
+`corr(crowd_pct, away_travel_km | 2021) = −0.138` (weak; the feared realignment collinearity
+did not materialise). Dropping the travel control moves the coef by **+0.0045** (margin) and
+**+0.0028** (win). `n_obs` **6949 → 6949 identical**, so the comparison is clean, not a sample
+shift. Honest caveat: with a coefficient already ≈0 the diagnostic is less informative than it
+would be against a non-null — but it does show travel is **not masking** an effect.
+
+**⚠️ THE WITHIN-2021 DOSE CURVE — advertised as NHL's whole selling point, never run until the
+final review. It comes out WRONG-SIGNED and must be reported (pre-commitment §2.4).**
+Season 2021 only, team FE, same controls, clustered by home team:
+
+| outcome | within-2021 dose | 95% CI | p | n |
+|---|---|---|---|---|
+| `home_margin` | **−1.414** (se .858) | [−3.099, +0.271] | .100 | 849 |
+| `home_win` | **−0.281** (se .183) | [−0.639, +0.078] | .125 | 849 |
+
+These are the **largest within-season dose magnitudes anywhere in the study**, and they point the
+wrong way (more crowd → *worse* home performance). **Raw means go the OTHER way**: empty n=556
+margin +0.146; with-fans n=310 margin +0.471. The sign flip on adding team FE *is* the
+endogeneity lesson the whole design is built around — worth a paragraph in Phase 8.
+**Two caveats belong with it:** (1) within-team fan access in 2021 is confounded with calendar
+time (states/provinces reopened progressively, so "more fans" ≈ "later in season"); (2) the
+fitted range is 0–0.40, so a `crowd_pct` coefficient **extrapolates 2.5×** beyond support.
+Neither p-value clears .05; do not report this as a negative effect, report it as *the
+within-season design being uninformative and endogenous* — which is why the headline is
+identified between-season.
+
+**⚠️ UNDISCLOSED SPECIFICATION SENSITIVITY — state it in Phase 8 with its rebuttal, or a referee
+finds it first.** NHL is the sport where 6a's "season FE are near-collinear with the treatment"
+argument is **weakest**: R² of `crowd_pct ~ C(season)+C(home_team)` is NFL .974, NBA .916,
+**NHL .878**, MLB .618. Under **full season FE**, NHL's win% coefficient is **+0.076 (se .048)** —
+an order of magnitude above the headline and the largest point estimate in the study.
+**The shipped spec is still right and the pre-commitment correctly froze it:** within-*normal*-
+season crowd variation is demand-driven (good teams draw crowds *and* win), which is precisely
+the endogeneity the design exists to dodge. The decomposition confirms it — within-2022 dose is
+**+0.056** while within-2021 (the exogenous slice) is **−0.28**. Report the sensitivity *and*
+this rebuttal together.
+
+**⚠️ Did NHL tighten the pooled estimate? Yes for SAMPLING error — but pooling CANNOT do the
+job earlier phases claimed for it.** (Final-review Critical; the correction matters more than
+the number.)
+
+| | FE (inverse-variance) | RE (DerSimonian–Laird) | τ² | I² |
+|---|---|---|---|---|
+| 3 sports | −0.0025 (SE .0127) | +0.0043 (SE .0183) | .000418 | 40.4% |
+| 4 sports | −0.0003 (SE .0111) | +0.0014 (SE .0123) | .000088 | 13.8% |
+
+**Three reasons the pooled number cannot carry a precision claim:**
+1. **The four estimates share a BIAS, not just independent noise.** Each is *crowd effect + that
+   league's 2020–21 non-crowd home-specific shift* — the confound this file names repeatedly.
+   Inverse-variance pooling shrinks *sampling* error as 1/√k and does **nothing** to a bias term
+   common across sports (same pandemic, same empty buildings, same schedule compression). The
+   pooled SE is a **lower bound** on real uncertainty. Any "the pooled CI rules out effects
+   larger than X" sentence is unsupportable and must not appear in Phase 8.
+2. **The heterogeneity test has no power at k=4.** Rejecting homogeneity at α=.05 needs Q > 7.81
+   (I² > ~62%); observed Q=3.48. And I² fell 40.4% → 13.8% *mechanically* because NHL landed near
+   the pooled mean — that is not new evidence of homogeneity. Do NOT write "no significant
+   heterogeneity, therefore a common effect": the MLB section of this file argues at length that
+   the true effects are **not** common (baseball's HFA mechanisms are crowd-independent).
+3. **The gain is specification-dependent and unstable.** FE-vs-FE = −12.8% CI width; RE-vs-RE =
+   −32.8%. Both are unreliable at k=3→4 where τ² is barely estimable. Report the range, not one
+   number. (Also: FE point estimate "moving" −0.0025 → −0.0003 is noise theatre — both are ~50×
+   smaller than their SE. RE even flips the sign.)
+
+⚠️ **This meta-analysis is NOT computed by any module** — `twfe_cross_sport.csv` is only a
+per-sport table. Earlier phases asserted "pooled cross-sport is where the precision lives"
+without code behind it. **Phase 8 must build it emitting BOTH FE and RE**, or report per-sport
+results only.
+
+**⚠️ FINDING for Phase 8 — season 2022 is NOT a clean control (Omicron).** Canadian teams
+Dec–Feb averaged `crowd_pct` **.519** with 26 near-empty games; Canadian 2022 .779 vs US .889;
+Feb 2022 league-wide .728. `treated_seasons=[2021]` codes 2022 as untreated. **Config left
+as-is deliberately:** `crowd_pct` for those games is *correct* (non-treated 2022 self-anchors
+capacity on its own max, and Canadian venues hit full houses Mar–Jun), so the continuous-dose
+TWFE headline is unaffected or helped; only the coarse season-level `covid_era` label is
+imprecise, and only the 6b DiD is attenuated (~100 games of ~5 control seasons ≈ 1–2% of
+control mass, biased toward zero = conservative). Marking all of 2022 treated would be worse
+(season averages .865; would break self-anchored capacity).
+
+**Other data notes:** `relocated_home` = 191 games (130 bubble + 61). Of the 61, **39 are the
+NY Islanders' dual-arena era** (Barclays/Nassau split, seasons 2019–21) — a false positive
+against the flag's *intent* (both were home buildings), left in place: 0.5% of games, exclusion
+is conservative, and a split-arena season plausibly does dilute home-park familiarity. The other
+22 are exactly what the modal rule was designed for. Three outdoor games have ESPN
+`venue == "None"` and collapse into one fake venue (their `crowd_pct` compares Regina's gate to
+the Cotton Bowl's capacity) — all three are `neutral_site=True` and excluded, so no estimate is
+affected; documented, not fixed.
+
+**Pre-commitments honoured (written before the pull):** NHL is reported in the cross-sport table
+and pooled estimate regardless of sign/significance; no sport dropped post hoc; the 6a
+specification was frozen and NHL got no bespoke tuning; the travel diagnostic was reported as
+found.
+
 ## Status
 
-**Phase 6b COMPLETE.** `src/models/did.py` + `tests/test_did.py` (5 tests) + `twfe.py`
-`_exclusion_mask` extraction; `results/tables/did_{nfl,mlb,nba}.csv` + `did_cross_sport.csv`
-+ `results/figures/did_hfa_shrink.png` generated. 104/104 tests. Opus whole-branch review
-READY TO MERGE (one cosmetic Minor deferred; write-up honesty items carried to Phase 8). All
-uncommitted, awaiting human commit (git is user-owned).
+**NHL 4th sport COMPLETE.** 122/122 tests. `data/{interim,processed}/nhl.parquet`;
+`results/tables/{descriptive_hfa,twfe_*,did_*,twfe_nhl_travel_diagnostic}.csv` +
+`results/figures/{hfa_by_season,twfe_crowd_effect,did_hfa_shrink}.png` all regenerated with four
+sports. All uncommitted, awaiting human commit (git is user-owned).
+
+**Four-sport headline (pooled, win-probability LPM — the cross-sport comparable unit):**
+nfl **+0.046** · nba **+0.015** · nhl **+0.007** · mlb **−0.019**. Every per-sport CI crosses zero.
+
+**⚠️ THE HONEST CONCLUSION (final review rewrote this — the earlier version overclaimed):**
+
+> Four independent replications, **each individually underpowered**, all centred near zero, none
+> able to exclude a crowd effect of the size NFL's point estimate implies. A shared, unmeasured
+> 2020–21 home-specific confound remains, and **pooling does not reduce it.**
+
+Do NOT write "no detectable crowd effect anywhere, pooled CI rules out >2pp" — that is stronger
+than the data licenses (see the meta-analysis §). Specifically on NHL: its win% SE is .0227, so
+the **minimum detectable effect at 80% power is ~6.3pp**, and its CI [−0.038, +0.051]
+**contains both NFL's +0.046 and NBA's +0.015**. NHL cannot distinguish zero from an NFL-sized
+effect; it is **not** corroboration of the other sports' nulls, merely consistent with them.
+"Clean null" and "independent null replication" both overstate it. NFL remains the only
+appreciable point estimate (+4.6pp, p=.20).
 
 **Deferred / next:**
-- **Phase 7 — bubble decomposition + seeding placebo (NEXT).** Doubles as the **disentangler** for
-  6a's un-separated "crowd + other pandemic shifts" (normal − empty ≈ crowd; empty − bubble ≈
-  travel + home-park).
+
+- **⬅ NEXT — Phase 7 (NEW): pre-write-up consolidation.** Spec APPROVED, plan NOT yet written.
+  `docs/superpowers/specs/2026-07-25-pre-writeup-consolidation-design.md`. **Next session: run
+  `writing-plans` for this spec, then execute.** Three workstreams, ordered **B → A → C**:
+  - **A — `src/models/sensitivity.py`** (5 functions → 5 CSVs). Five numbers destined for the
+    paper currently exist ONLY as prose in this file: the pooled meta-analysis, trend
+    sensitivity, season-FE sensitivity, the NHL within-2021 dose curve, and the MLB
+    treated-season split. Prose is not reproducible and the two most contestable numbers are in
+    it. `within_season_dose` runs for **all four sports** (approved) so the endogeneity sign-flip
+    can be tested for reproduction, and every row carries its fitted support range.
+  - **B — literature positioning** → `docs/literature-review.md` + a real `paper/references.bib`
+    (currently ONE comment line, zero entries). **The study's null is in tension with a
+    near-unanimous literature**: a systematic review of football ghost-game studies found NOT ONE
+    reporting increased HFA (6 no change, 2 slightly reduced, 8 reduced, 10 strongly reduced);
+    Higgs & Stavness (2021) report NBA 2.13 → 0.44 pts (vs our 2.26 → 0.92); a PLOS One study
+    finds fan absence removes HFA in NHL **penalty calls**. Four questions, and **Q3 is the one
+    that could change the paper's conclusion: are we simply underpowered relative to studies that
+    found effects?** (Compare our MDEs — NHL's is ~6.3pp — against their reported effect sizes.)
+    Q4 matters too: mechanism-vs-outcome plausibly reconciles the NHL penalty finding with our
+    NHL outcome null. Literature runs FIRST so its findings can shape workstream A.
+  - **C — paper-facing + correctness fixes ONLY** (scope decision: the ~20 latent/cosmetic Minors
+    are catalogued, NOT churned through estimator code now producing final byte-verified numbers).
+    `summarize(panel, playoffs=False)` — the planned playoff-HFA subsection **cannot currently be
+    written** because `descriptive.py:33,57` hardcode `~is_playoff`; NBA palette contrast **2.62 <
+    3:1** on print-bound figures + delete the phantom `scripts/validate_palette.js` reference;
+    verify 3 claims stated as fact (NHL 2021 realignment, TOR/EDM own-arena bubble games, hub
+    dates); fix the `extra_controls` duplicate-column footgun (**stops being latent — this phase
+    adds callers**) and the stale `test_config_has_three_sports` name.
+  - **§6 of the spec is a "must NOT do" list** — do not restate the pooled estimate as a precision
+    claim (the sports share a BIAS, not just noise); do not read absence of heterogeneity as
+    evidence of homogeneity (no power at k=4); do not re-specify the frozen 6a model; do not call
+    any sport's result a "clean null".
+
+- **Phase 7 (OLD) — bubble decomposition CANCELLED as a code phase** (decided 2026-07-24; the
+  Phase 7 slot is now reused by the consolidation phase above). The NBA bubble decomposition +
+  seeding placebo becomes a short, explicitly-hedged **subsection of the Phase 8 write-up**,
+  computed inline. *Why:* the seeding placebo is n=88 with margin +1.65 (SE 1.35) → CI ≈
+  [−1.0, +4.3], which contains both 0 and full normal HFA (2.26) — a test that cannot fail. The
+  decomposition's second row comes out wrong-signed (`empty − bubble = −0.73`). And its stated
+  job was false: it is **NOT** the disentangler for the 6a/6b confound, because the bubble sits
+  *inside* the pandemic window and swaps one bundled treatment for another. Also, the placebo's
+  null isn't cleanly zero — bubble "home" teams kept court branding, uniform choice, and
+  bench/second-half conventions. **NHL's bubble does not help**: all 130 games are playoffs
+  (quality-confounded), so they can feed neither the placebo (needs `is_playoff==False`) nor the
+  regular-season decomposition table. Report the regime table with SEs and draw no inference.
 - **Phase 8 — Quarto write-up.** Carry the three 6a honesty corrections above + the
   playoff-exclusion caveat + a **descriptive playoff-HFA subsection** (reuse
   `descriptive.summarize()` with `is_playoff==True`; blended with seeding quality → asterisk).
@@ -661,19 +899,17 @@ uncommitted, awaiting human commit (git is user-owned).
 - **Delete ESPN caches** (`data/raw/*/espn`, ~14GB MLB + ~6GB NBA) once parquets verified —
   gitignored/local-only; only near project end (avoid re-pull risk).
 
-**Maybe-later (optional, not required — the 3-sport study is complete on its own):**
-- **Add NHL as a 4th sport.** *Why:* the study's main weakness is wide, cross-zero per-sport
-  CIs; each extra sport that lived through the empty-stadium period is an independent
-  replication that tightens the **pooled cross-sport** crowd estimate — the real power lever
-  (more *seasons* don't help; treated games are fixed by history). *Why NHL specifically:* it
-  fits the existing architecture almost for free — ~30 stable teams (team-FE + Elo hold),
-  indoor like NBA (weather null), a clean empty→partial 2020–21 shock, and almost certainly
-  the same ESPN `hockey/nhl` scoreboard+summary endpoints `_espn.py` is already parameterized
-  for → just a new `src/data/nhl.py` loader; everything downstream is already sport-blind.
-  *Before building:* run the same ~30-min attendance spike as the other sports (confirm ESPN
-  carries `gameInfo.attendance` with a real `0` for empty games). *Caveat:* more sports buy
-  precision + generalizability, NOT cleaner identification — the crowd-vs-other-2020–21-shifts
-  confound is the same pandemic hitting everyone, so only Phase 7's bubble decomposition
-  disentangles it. **Soccer is NOT a cheap add** (draws break the binary outcome, promotion/
-  relegation breaks the panel, non-US data shape) — it would be its own separate study, not a
-  4th loader.
+**Maybe-later (optional — the 4-sport study is complete on its own):**
+- **The sport roster is closed at four, on structural (outcome-independent) grounds.** Soccer/MLS:
+  draws break the binary outcome, promotion/relegation breaks the team panel. WNBA: 2020 was
+  *entirely* a bubble (Bradenton), so the empty-with-travel regime does not exist, plus ~12 teams ×
+  ~32 games. NCAA FB/BB: hundreds of unstable rosters break team-FE + Elo, different data source —
+  a separate study, not a loader. Recording these matters: sport selection must be defensible as
+  outcome-independent, and NHL was added *before* its result was known and reported unchanged after.
+- **Build the pooled cross-sport meta-estimate in code** (see the NHL section's ⚠️). Currently
+  computed ad hoc; `twfe_cross_sport.csv` is only a per-sport table. Inverse-variance weighting of
+  the win% LPM coefficients, with the Cochran's-Q heterogeneity test alongside it.
+- **Deferred NHL sensitivity checks (neither load-bearing):** (a) shootout-zeroed margin — re-run
+  NHL `home_margin` with `status.period == 5` games set to 0, a few lines against the built panel,
+  available if anyone questions the ±1 censoring given 41.5% of games are one-goal; (b)
+  regulation-time outcomes as the fuller alternative, rejected as primary in spec §4.1.
