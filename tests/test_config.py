@@ -5,7 +5,7 @@ import yaml
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "sports.yaml"
 
 
-def test_config_has_three_sports_with_treated_seasons():
+def test_config_has_four_sports_with_treated_seasons():
     cfg = yaml.safe_load(CONFIG.read_text())
     assert set(cfg) == {"nfl", "mlb", "nba", "nhl"}
     for sport, body in cfg.items():

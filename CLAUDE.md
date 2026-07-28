@@ -98,9 +98,10 @@ the "done when" check — is in the spec §8; this list is the quick reference.
 6a. **Causal — TWFE dose-response** (the engine).
 6b. **Causal — back-pocket on/off DiD** — *promoted to co-primary during 6a; the treatment is
     time-clustered, so the on/off comparison is the natural estimator, not a back-pocket.*
-7. ~~**Bubble decomposition + placebo**~~ — **CANCELLED as a code phase (2026-07-24)**; folded
-   into the Phase 8 write-up as a hedged subsection. It was never the disentangler it was
-   billed as. See the Status section.
+7. **Pre-write-up consolidation** — sensitivity module (5 prose-only numbers → 5 CSVs),
+   literature positioning + `references.bib`, paper-facing fixes. *(The slot originally held
+   ~~**Bubble decomposition + placebo**~~, **CANCELLED as a code phase 2026-07-24** — folded into
+   the Phase 8 write-up as a hedged subsection; it was never the disentangler it was billed as.)*
 8. **Quarto write-up** → PDF + HTML.
 
 **How to build:** today's spec is the umbrella design, not a single build script.
@@ -623,7 +624,11 @@ wrote all artifacts.** All uncommitted, awaiting human commit.
 +1.06), win% +0.024; MLB margin −0.11 (noise, 6a −0.14), win% −0.013. DiD slightly larger
 than 6a is expected (raw vs Elo/rest/travel-adjusted). MLB slope near-flat by design
 (Phase-5 noise); per-sport CIs wide & zero-crossing (**underpowered — a finding, not a
-failure**); pooled cross-sport win-prob is where any precision lives.
+failure**); pooled cross-sport win-prob is where any precision lives. ⚠️ **That last clause is
+refuted — see the NHL section's meta-analysis paragraph.** The code now exists
+(`meta_cross_sport.csv`, Phase 7), but the four sports share a **BIAS**, not merely independent
+noise, so pooling shrinks sampling error only and the pooled SE is a **lower bound**. Do not lift
+this sentence into the paper.
 
 **Deferred Minor (cosmetic):** `plot_slope` legend swatches inherit the first-sorted sport's
 color (mlb green) not neutral gray — hollow/filled *shape* still reads; fix only if the
@@ -683,7 +688,12 @@ excluded games and is inflated — the honest version is below.
 Elo accuracy **0.585** / Brier .239 — PASS (pre-registered band .57–.58, bug floor .52).
 Four-sport Elo ranking NBA .639 > NFL .627 > NHL .585 > MLB .577 = correct ordering.
 
-**⚠️ THE RESULT — NHL is a clean null, and it is the sport with the strongest treatment.**
+**⚠️ THE RESULT — NHL is centred near zero and underpowered, and it is the sport with the
+strongest treatment.** *(This header read "NHL is a **clean null**" until Phase 7 corrected it —
+that phrasing is language ban #1 in the Status section, and it sat 300 lines above its own
+rebuttal. NHL's win% SE is .0227 → MDE ≈ 6.3pp, and its CI **contains both** NFL's +0.046 and
+NBA's +0.015, so it cannot distinguish zero from an NFL-sized effect. "Clean null" and
+"independent null replication" both overstate it.)*
 
 | Estimator | margin | win% |
 |---|---|---|
@@ -704,7 +714,7 @@ sits *on* the trend, not below it.
 
 | trend spec | margin | win% |
 |---|---|---|
-| no trend at all | +0.0296 (se .121) | +0.0118 (se .023) |
+| no trend at all | +0.0296 (se .118) | +0.0118 (se .023) |
 | **linear (shipped)** | **+0.0077** | **+0.0066** |
 | quadratic | +0.0316 | +0.0025 |
 
@@ -728,9 +738,13 @@ Season 2021 only, team FE, same controls, clustered by home team:
 | `home_win` | **−0.281** (se .183) | [−0.639, +0.078] | .125 | 849 |
 
 These are the **largest within-season dose magnitudes anywhere in the study**, and they point the
-wrong way (more crowd → *worse* home performance). **Raw means go the OTHER way**: empty n=556
-margin +0.146; with-fans n=310 margin +0.471. The sign flip on adding team FE *is* the
-endogeneity lesson the whole design is built around — worth a paragraph in Phase 8.
+wrong way (more crowd → *worse* home performance). **Raw means go the OTHER way**: empty n=542
+margin +0.149; with-fans n=307 margin +0.446. *(Values corrected in Phase 7 — the raw means are
+now computed on the **fit sample** so `n_empty + n_fans == n_obs`; previously n=556/+0.146 and
+n=310/+0.471 on a wider exclusion-only sample. Coefs, SEs, `n_obs` and support ranges unchanged.
+`results/tables/within_season_dose.csv` is now authoritative over this prose.)* The sign flip on
+adding team FE *is* the endogeneity lesson the whole design is built around — worth a paragraph
+in Phase 8.
 **Two caveats belong with it:** (1) within-team fan access in 2021 is confounded with calendar
 time (states/provinces reopened progressively, so "more fans" ≈ "later in season"); (2) the
 fitted range is 0–0.40, so a `crowd_pct` coefficient **extrapolates 2.5×** beyond support.
@@ -775,10 +789,10 @@ the number.)
    number. (Also: FE point estimate "moving" −0.0025 → −0.0003 is noise theatre — both are ~50×
    smaller than their SE. RE even flips the sign.)
 
-⚠️ **This meta-analysis is NOT computed by any module** — `twfe_cross_sport.csv` is only a
-per-sport table. Earlier phases asserted "pooled cross-sport is where the precision lives"
-without code behind it. **Phase 8 must build it emitting BOTH FE and RE**, or report per-sport
-results only.
+~~⚠️ **This meta-analysis is NOT computed by any module**~~ — **RESOLVED in Phase 7.**
+`src/models/sensitivity.py::meta_cross_sport` now emits both FE and RE to
+`results/tables/meta_cross_sport.csv` (plus per-sport `mde_80`). The table above reproduced
+exactly; the CSV is authoritative over this prose.
 
 **⚠️ FINDING for Phase 8 — season 2022 is NOT a clean control (Omicron).** Canadian teams
 Dec–Feb averaged `crowd_pct` **.519** with 26 near-empty games; Canadian 2022 .779 vs US .889;
@@ -804,100 +818,302 @@ and pooled estimate regardless of sign/significance; no sport dropped post hoc; 
 specification was frozen and NHL got no bespoke tuning; the travel diagnostic was reported as
 found.
 
+## Phase 7 — pre-write-up consolidation (done 2026-07-28) — COMPLETE
+
+Spec → plan → subagent-driven build (7 tasks, per-task opus/sonnet reviews, every task clean
+after ≤1 fix round). Spec: `docs/superpowers/specs/2026-07-25-pre-writeup-consolidation-design.md`;
+plan: `docs/superpowers/plans/2026-07-27-phase7-pre-writeup-consolidation.md`; ledger:
+`.superpowers/sdd/2026-07-27-phase7-pre-writeup-consolidation/progress.md`. **122 → 152 tests, all
+passing.** All uncommitted, awaiting human commit (git is user-owned).
+
+**⚠️ THE STANDING RULE THIS PHASE ESTABLISHES — the CSVs are now authoritative over this file.**
+Any number Phase 8 puts in the paper comes from `results/tables/` or a `.qmd` chunk, **never** from
+`CLAUDE.md` prose. The prose here is a narrative index of what was decided and why; where the two
+ever disagree, the CSV wins and the prose is the thing that's stale.
+
+**Built:**
+- `src/models/sensitivity.py` + `tests/test_sensitivity.py` (11 tests) — five prose-only numbers
+  now have code behind them, one CSV each in `results/tables/`:
+  `meta_cross_sport.csv` (FE inverse-variance **and** DerSimonian–Laird RE, Cochran's Q, I², τ²,
+  per-sport `mde_80 = 2.8·SE`) · `trend_sensitivity.csv` · `season_fe_sensitivity.csv` (with a
+  `crowd_pct ~ C(season)+C(home_team)` collinearity R² per sport) · `within_season_dose.csv`
+  (all four sports, each row carrying its fitted support range) · `mlb_treated_split.csv`.
+- `src/models/twfe.py` — `fit()` gained `trend={"linear","quadratic","none"}`, `season_fe=`,
+  `report=` (which coefficient to return), `sample="treated"`, and the `extra_controls`
+  duplicate-column de-dupe (stopped being latent — this phase added the callers). Named
+  `ValueError`s replace bare `KeyError`s on bad `trend`/`report`.
+- `docs/literature-review.md` (7 sections, §0–§6) + `paper/references.bib` (**12 entries**, replacing one
+  comment line; every entry read at primary source).
+- `src/viz/descriptive.py` — `summarize(panel, playoffs=False)` unblocks the Phase 8 playoff-HFA
+  subsection (`~is_playoff` was hardcoded); `MARKERS` per-sport shapes; new palette.
+- `requirements.txt` — `scipy` promoted to a declared direct dependency (it was working only
+  transitively via statsmodels/linearmodels).
+
+**Reproduction check — the CSVs agree with the prose except for one deliberate basis fix and one
+transcription error the "zero discrepancies" claim below originally missed.**
+Tasks 3/4/5 each re-derived their numbers and compared line by line against this file: the pooled
+meta-analysis (FE −0.000334 / RE +0.001422, τ² .000088, I² 13.8%, Q 3.48; 3-sport FE −0.002511 /
+I² 40.4%), the NHL trend sweep, all four collinearity R², NHL season-FE +0.076 (se .048), and all
+nine NHL within-2021 reference values. **That sweep was reported as "zero discrepancies" and it had
+one:** the NHL trend table above gave the no-trend margin SE as `.121` where
+`trend_sensitivity.csv` says **0.11838 → .118** (corrected 2026-07-28; every other cell in that
+table does match). This is the **second** false self-verification caught in this phase — the first
+was a `'clean null'` grep reported as run that was never run (ledger, Task 7 review C1). Both were
+found by a *later* reviewer, not by the agent that claimed the check, which is the whole hazard: a
+reported pass stops anyone else from looking. Treat any "verified / zero discrepancies" line in this
+file as a claim to re-run, not a result. The frozen 6a/6b headline numbers
+were verified unchanged by **three independent checks** — two **byte-identical** (implementer diff,
+task reviewer from the package) and one a **live refit matching at rtol=1e-10** across all 16
+`twfe_*.csv` rows and all 24 `trend_sensitivity.csv` rows (a tolerance match, not bitwise: it
+re-estimates rather than re-reads, which is the stronger check of the three precisely because it
+can't go stale). The one value that **moved** is recorded in the NHL section above:
+the within-season raw means are now computed on the *fit* sample so `n_empty + n_fans == n_obs`
+holds in all eight rows.
+
+**⚠️ CITATION CORRECTION — this file was wrong, and the wrong version was about to enter the paper.**
+The NBA "**2.13 → 0.44 pts**" figures are **Ganz & Allsop (2024)**, *A Mere Fan Effect on Home-Court
+Advantage*, *Journal of Sports Economics* **25(1), 30–53** — an FE-IV study instrumenting with
+2020–21 NBA attendance restrictions. They are **NOT** Higgs & Stavness (2021), which is a Bayesian
+negative-binomial model reporting **log-scale** parameters and contains no such pair. Verified
+independently by two agents against both primary sources. Both papers are in the bib; cite Ganz &
+Allsop for that number. (Related conflation also fixed: the **6/2/8/10** ghost-game split is
+Leitner et al.'s 26-study review — primary-verified verbatim at **PMC8724651**, open access, incl.
+"not a single study that found an *increased* home advantage". Wang & Qin (2023) is a *different*
+review of 28 articles split by **outcome type** 8/6/4/10. Do not merge the two.)
+
+**⚠️ THE LITERATURE IS NOT NEAR-UNANIMOUS — soften the framing this file used.** Three published
+nulls sit on our side of the line: **Schank et al. (2024)** finds a null across a *full* Bundesliga
+spectator-ban season (2020/21) with a **U-shaped** dose curve in 2021/22; **Higgs & Stavness (2021)**
+finds no meaningful **MLB** change; **Gong (2022)** is a null on the **NBA referee-bias mechanism**.
+The honest statement is "predominantly, but not unanimously, in favour of a crowd effect" — not
+"our null vs a near-unanimous literature".
+
+**⚠️ THE ANSWER TO Q3 (are we underpowered relative to the studies that found effects?) — YES, and
+it should become Phase 8's lead framing.** In **seven of eight** sport × outcome cells the 80%-power
+MDE **exceeds that sport's entire home advantage**, and in the eighth (NBA win%) it **equals** it:
+
+| MDE ÷ total HFA | margin | win% |
+|---|---|---|
+| nfl | 1.82× | 1.96× |
+| mlb | 10.59× | 1.59× |
+| nba | 1.11× | **1.02×** |
+| nhl | 1.27× | 1.66× |
+
+**A crowd effect accounting for 100% of home-field advantage would go undetected at 80% power in
+seven of the eight cells, and would sit exactly at the detection threshold in the eighth.** (Say it
+that way, not "in any cell" — and do NOT bolt "and this is robust to rescaling" onto it; caveat (2)
+below moves **three** cells to ≈1.0 or below.) This is sharper and more defensible than
+"underpowered and centred near zero" — the conclusion is *this design cannot distinguish zero from a
+crowd effect explaining all of HFA*, not "no effect", and not "we contradict the literature".
+**Two caveats travel with it, always:**
+(1) the denominator is `mde_80 / (pooled_fullcrowd win% − 0.5)` from `descriptive_hfa.csv`
+(nfl .0520 · mlb .0282 · nba .0705 · nhl .0383), `mean_home_margin` for the margin column;
+(2) **the coefficient is scaled per unit `crowd_pct`, and no sport's data spans a full unit.**
+Realised crowd levels differ sharply *by sport* — measured on the exclusion-filtered estimation
+panel, control-season mean `crowd_pct` is nfl **.97** · mlb **.65** · nba **.92** · nhl **.92**,
+against treated-season means of .064 · **.318** · .073 · .062. **MLB is the outlier in both
+columns**: under the Option-A empirical-capacity definition, announced MLB attendance never
+approaches the stadium-season maximum, so a normal MLB season averages .63–.67 dose and only 17% of
+its games exceed 0.9. (The earlier version of this caveat quoted a single "~0.88–0.93 units" band
+and treated-season means "0.066–0.124" — both were computed from NFL and NBA only, with MLB left
+out. They are wrong for MLB on both sides.) Rescaling each MDE to its own sport's realised contrast
+(a crowd effect explaining 100% of HFA implies β = HFA ÷ control-crowd level) gives:
+
+| rescaled MDE ÷ total HFA | margin | win% |
+|---|---|---|
+| nfl | 1.77× | 1.90× |
+| mlb | 6.86× | **1.03×** |
+| nba | **1.02×** | **0.94×** |
+| nhl | 1.17× | 1.52× |
+
+**Three cells land at ≈1.0 or below** (nba win% 0.94, nba margin 1.02, mlb win% 1.03), and nhl
+margin falls 1.27 → 1.17. So the seven-of-eight statement is correct **at per-unit scaling** and is
+**not** robust to rescaling — the rider "neither point touches the other seven", which this file
+carried until 2026-07-28, was false. State the scaling basis in Phase 8; do not claim the
+conclusion is unaffected by it. **A third consequence, never stated anywhere until now: MLB's
+headline `crowd_pct` coefficient extrapolates roughly 1.5× beyond the dose MLB typically attains**
+— it reads a 0→1 contrast off an empty→typical-full contrast of 0→.65. That is exactly the
+support-range caveat already carried for the NHL within-2021 dose fit, and it applies here to a
+*headline* estimate, not a sensitivity. Where a published effect exists in a
+convertible unit (**NBA only**), our interval contains it: Ganz & Allsop's 2.13 → 0.44 converts to
+Δ = **4.65 pp** (Φ(μ/σ), σ = 14.42 measured on our own clean NBA panel, n = 6,925) against our NBA
+win% MDE of **7.18 pp**, and our margin CI [−0.70, +2.81] contains their 1.69-pt effect. No
+conversion was invented for the football studies (draws break the binary outcome) or for Higgs &
+Stavness (log-scale, no published translation).
+
+**Palette (C2) — both warm hues failed, and the fix is a documented trade, not a free win.**
+`#e87ba4` (nba, **2.69** against white — 2.62 against the `#fcfcfb` figure background; fails
+either way) failed the 3:1 floor as expected — but so did `#e08b00` (nhl, **2.67**),
+and that second failure was **invisible** because the test asserted inside a `for` loop over an
+insertion-ordered dict and short-circuited at nba. Shipped: nba **`#a4036f` (7.44)**, nhl
+**`#e42800` (4.56)**; nfl `#2a78d6` (4.42) and mlb `#008300` (4.95) unchanged. **The honest trade:**
+contrast improved, but deuteranopia separation on the green/red (mlb–nhl) pair regressed
+**19.62 → 8.4 ΔE** — still clearing the 6.0 floor and the 8.0 target, but that pair is now the
+tightest in the figure. **No non-red alternative exists**: a brute-force sweep of ~1500 warm hexes
+plus an independent reviewer sweep showed every amber/brown collapses onto green under
+protan/deutan simulation (`#c77800` 3.5 · `#b36b00` 1.2 · Okabe-Ito `#d55e00` 1.6 — deep FAIL, not
+WARN). The theoretical all-pairs ceiling given fixed blue/green/magenta is 13.25 and is set by the
+*existing* mlb–nba pair, not slot 4. Mitigations shipped alongside: **per-sport marker shapes**
+(`MARKERS = {nfl "o", mlb "s", nba "^", nhl "D"}` in both `descriptive.py` and `twfe.py`, wired into
+`plot_hfa` and `plot_effect`) so sport is no longer encoded by colour alone; a parametrized contrast
+test (one case per sport — the loop structure that hid the nhl failure is gone); a **CVD floor
+regression guard** over all 6 pairs asserting ≥ 6.0 ΔE, shown failing on a contrast-fixed-but-
+CVD-blind palette; and the cross-module equality test now guards **both** `SPORT_COLORS` **and**
+`MARKERS`. `descriptive_hfa.csv` and all 17 tables reproduce byte-identical — figures only.
+
+**C3 claim verification — all three VERIFIED, nothing cut.** (1) NHL 2020–21 four-division
+realignment incl. the all-Canadian North Division — structure confirmed, but NHL.com does **not**
+state cross-border travel as the *reason*; hedge the rationale (the travel diagnostic's
+justification survives regardless: a division-only 56-game schedule mechanically changes the 2021
+travel distribution). (2) TOR/EDM played bubble games in their own arenas — confirmed, and the
+higher seed was *designated home team* with customised in-arena presentation, which corroborates
+that the bubble is **not** a clean placebo zero. (3) Bubble hub dates 1 Aug – 28 Sep 2020 —
+confirmed, matching `src/data/nhl.py`'s `is_bubble` rule exactly. Sources 2 and 3 are Wikipedia
+(tertiary) — upgrade if either does argumentative work.
+
+**Decisions settled this phase:**
+- **`trend="none"` is load-bearing for within-season fits** — a linear trend on a single season
+  raises "exog does not have full column rank".
+- **`within_season_dose` raw means are on the FIT sample**, not the wider exclusion-only sample, so
+  the raw contrast and the adjusted coefficient are attributable to *adjustment* rather than to a
+  sample difference. Support ranges (`crowd_min/max/p99`) deliberately stay on the wider sample
+  (they move ≤ .0007).
+- **`mlb_treated_split` sign convention is NOT 6b's.** `did.py` publishes `crowd_effect = −coef`;
+  this table reports the **raw treated-year level, unnegated**. Positive here means home margin was
+  *higher* that year, i.e. the implied crowd effect is **negative** — the opposite reading from 6b.
+  A Phase-8 writer who reads +0.0595 as "crowd helped home" has it backwards.
+- **The collinearity R² is approximate by construction** — it runs on 1–6% more rows than the fit
+  (exclusions only vs exclusions + control listwise-drop), moving R² by ≤ 0.0023. It **cannot** be
+  made exact: NFL's two outcomes have different fit samples (1463 vs 1459), so one R² per sport is
+  necessarily approximate. Invisible at the 2dp the paper cites and it does not disturb the
+  NFL > NBA > NHL > MLB ordering that carries the argument. Documented, not fixed.
+- **MLB treated-season split puts BOTH year indicators in one model** — each absorbs the other if
+  omitted (dropping the 2021 indicator moves the 2020 coefficient .0595 → .0358). The two
+  `report=` calls are two **views of one regression**, not two regressions.
+
+**Measured results new this phase:** MLB's faint negative headline does **not** live entirely in
+2020 — both treated years come out slightly *positive* on the year-indicator level (2020 +0.0595
+se .174 · 2021 +0.1190 se .114 for margin; +0.0146 · +0.0101 for win%, all p > .29, n 12893). The
+"is it a 2020 rule artifact?" check is therefore **inconclusive, not confirmatory** — and it cannot
+separate 2020's rule changes from crowd effects in any case (`main()` prints that caveat).
+
+**⚠️ CARRY TO PHASE 8 (four items that will otherwise be mis-written):**
+1. **NFL's within-season `home_margin` is effectively unidentified** — se **29.24**, CI ±57.6.
+   Mark it **non-estimable**; do not table it beside NHL's −1.41 as though the two are comparable.
+2. **`summarize(playoffs=True)` OMITS seasons with zero clean playoff games entirely** rather than
+   emitting `n_games=0` rows (NBA 2020, NHL 2020 — both all-bubble). Correct behaviour; Phase 8
+   must expect *missing* rows, not zero rows.
+3. **The raw-contrast-vs-team-FE-coefficient sign opposition reproduces in BOTH NHL and MLB** —
+   NHL raw +0.297 vs coef −1.414; MLB raw +0.020 vs coef −0.350. That is the endogeneity lesson
+   reproducing **across sports**, not two anomalies. Write it as the design point it is.
+4. **`within_season_dose.csv` carries TWO sample bases in one row, and the CSV itself does not say
+   so.** `crowd_min/max/p99` sit on the broad exclusion-only `_prep` sample ("what doses exist at
+   all"); `raw_empty_mean`/`raw_fans_mean`/`n_empty`/`n_fans` sit on the narrow fit sample (so
+   `n_empty + n_fans == n_obs` and the raw contrast is comparable to the adjusted coefficient).
+   Deliberate and documented in `within_season_dose`/`_dose_fit_sample` docstrings — but Phase 8
+   reads the CSV, not the docstrings. Do not describe the support range and the raw means as coming
+   from the same rows.
+
+**Deferred Minors (non-blocking, logged in the phase ledger):** `systematicreview_ghostgames`' PDF remains
+publisher-blocked (Springer 303 / ResearchGate 403) — the PMC mirror carries the full text, so the
+quotes are primary-verified, but the *published* PDF was never seen. The
+`plosone_nhl_penalties` playoffs interaction has an **internal source inconsistency**: the paper's
+prose says b = .17, its own regression table says **b = .186 (SE .083, z = 2.254, p = .024)** — the
+table is authoritative and `.17` is not even a rounding of `.186`; a transcription note ships with
+it. `_delta_e_cvd`'s Machado-2009 matrices are copied verbatim from the dataviz skill's bundled
+validator (the skill lives outside the repo, so they must stay in lockstep by hand).
+
 ## Status
 
-**NHL 4th sport COMPLETE.** 122/122 tests. `data/{interim,processed}/nhl.parquet`;
-`results/tables/{descriptive_hfa,twfe_*,did_*,twfe_nhl_travel_diagnostic}.csv` +
-`results/figures/{hfa_by_season,twfe_crowd_effect,did_hfa_shrink}.png` all regenerated with four
-sports. All uncommitted, awaiting human commit (git is user-owned).
+**Phase 7 (pre-write-up consolidation) COMPLETE.** 152/152 tests. Five new tables in
+`results/tables/` (`meta_cross_sport`, `trend_sensitivity`, `season_fe_sensitivity`,
+`within_season_dose`, `mlb_treated_split`) alongside the frozen `descriptive_hfa` / `twfe_*` /
+`did_*` set — all 17 CSVs content-verified identical where they were meant to be frozen. All three
+figures regenerated with the new palette + marker shapes. `docs/literature-review.md` and a
+12-entry `paper/references.bib` now exist. All uncommitted, awaiting human commit (git is
+user-owned).
+
+**⬅ NEXT — Phase 8: Quarto write-up → PDF + HTML.** Everything the paper needs now exists as code
+and CSVs — every **estimator** the paper needs now exists. **Two tables remain to be computed
+inline in Phase 8** (neither has a CSV): the descriptive playoff-HFA table via
+`summarize(panel, playoffs=True)`, and the NBA bubble decomposition + seeding placebo.
 
 **Four-sport headline (pooled, win-probability LPM — the cross-sport comparable unit):**
 nfl **+0.046** · nba **+0.015** · nhl **+0.007** · mlb **−0.019**. Every per-sport CI crosses zero.
+NFL remains the only appreciable point estimate (**+4.6pp, p=.20**).
 
-**⚠️ THE HONEST CONCLUSION (final review rewrote this — the earlier version overclaimed):**
+**⚠️ THE HONEST CONCLUSION (Phase 7 sharpened this — lead with the power statement, not the null):**
 
-> Four independent replications, **each individually underpowered**, all centred near zero, none
-> able to exclude a crowd effect of the size NFL's point estimate implies. A shared, unmeasured
-> 2020–21 home-specific confound remains, and **pooling does not reduce it.**
+> In seven of eight sport × outcome cells, the effect this design could detect at 80% power is
+> **larger than the entire home-field advantage of that sport**; in the eighth it is equal to it.
+> (That ratio is **per unit `crowd_pct`**. Rescaled to each sport's realised crowd contrast —
+> nfl .97 · mlb .65 · nba .92 · nhl .92 — **three** cells fall to ≈1.0 or below. Both scalings are
+> in the Phase 7 section above; say which one you are quoting, and do not claim the statement is
+> unaffected by the choice.)
+> Four replications, each individually underpowered, all centred near zero, none able to exclude a
+> crowd effect of the size NFL's point estimate implies. In the one sport where a published
+> estimate converts to our units (**NBA**), our interval contains it. A shared, unmeasured 2020–21
+> home-specific confound remains, and **pooling does not
+> reduce it.** The claim this study can defend is that it cannot distinguish zero from a crowd
+> effect accounting for all of HFA; it is *not* evidence that crowds don't matter.
 
-Do NOT write "no detectable crowd effect anywhere, pooled CI rules out >2pp" — that is stronger
-than the data licenses (see the meta-analysis §). Specifically on NHL: its win% SE is .0227, so
-the **minimum detectable effect at 80% power is ~6.3pp**, and its CI [−0.038, +0.051]
-**contains both NFL's +0.046 and NBA's +0.015**. NHL cannot distinguish zero from an NFL-sized
-effect; it is **not** corroboration of the other sports' nulls, merely consistent with them.
-"Clean null" and "independent null replication" both overstate it. NFL remains the only
-appreciable point estimate (+4.6pp, p=.20).
+**Language bans, binding on Phase 8 (spec §6 — earlier drafts violated all four):**
+1. Do **NOT** call any sport's result a "**clean null**" or an "independent null replication".
+   NHL's win% SE is .0227 → MDE ≈ 6.3pp, and its CI [−0.038, +0.051] **contains both** NFL's +0.046
+   and NBA's +0.015. It is consistent with the other nulls, not corroboration of them.
+2. Do **NOT** write any sentence of the form "**the pooled CI rules out effects larger than X**".
+   The four sports share a **BIAS**, not merely independent noise — pooling shrinks *sampling*
+   error as 1/√k and does nothing to a bias common across leagues. The pooled SE is a **lower
+   bound** on real uncertainty.
+3. Do **NOT** read absence of heterogeneity as evidence of homogeneity. At k=4 the Q test has no
+   power (needs Q > 7.81; observed 3.48), and I² fell 40.4% → 13.8% *mechanically* because NHL
+   landed near the pooled mean.
+4. Do **NOT** re-specify the frozen 6a model. The specification was pre-committed and every number
+   in `results/tables/` is byte-verified against it.
 
-**Deferred / next:**
+**Phase 8 checklist (carried forward):**
+- The three 6a honesty corrections (no within-season dose curve for any sport; `closing_spread` is
+  a **post-treatment bad control**; the identifying assumption stated plainly = crowd effect **+**
+  any other 2020–21 league-wide home-margin shift, with no in-model separation).
+- Present **6a (adjusted)** and **6b (raw before/after)** side by side; use the precise
+  "**comparative interrupted time series / away-team-as-control**" naming, not literal "2×2 DiD";
+  state the shared 6a/6b confound explicitly. `did_hfa_shrink.png` is the intuitive centerpiece.
+- The playoff-exclusion caveat **plus** a descriptive **playoff-HFA subsection** via
+  `descriptive.summarize(panel, playoffs=True)` (now unblocked) — blended with seeding quality, so
+  it carries an asterisk, and expect *missing* seasons rather than zero rows.
+- The **NBA bubble decomposition + seeding placebo** as a short, explicitly-hedged subsection
+  computed inline — **not** a disentangler. The placebo is n=88, margin +1.65 (SE 1.35) → CI ≈
+  [−1.0, +4.3], containing both 0 and full normal HFA (2.26): a test that cannot fail. The
+  decomposition's second row is wrong-signed (`empty − bubble = −0.73`). The bubble sits *inside*
+  the pandemic window and swaps one bundled treatment for another, and bubble "home" teams kept
+  court branding, uniform choice and bench conventions, so its null isn't cleanly zero. **NHL's
+  bubble does not help** — all 130 games are playoffs, therefore quality-confounded, so they can
+  feed **neither** the placebo (which needs `is_playoff==False`) **nor** the regular-season
+  decomposition table. Report the regime table with SEs and draw no
+  inference.
+- The **NHL sections** above in full: the trend-sensitivity table, the season-FE sensitivity **with
+  its rebuttal**, the wrong-signed within-2021 dose curve **with both caveats**, the travel
+  diagnostic, and the 2022-Omicron control-contamination note.
+- **Why MLB shows no/faint-wrong-sign crowd effect.** (1) Statistically ZERO, not a reversal —
+  margin CI [−0.39, +0.16] p.42, win% CI [−0.038, +0.013] p.33; the negative sign is noise.
+  (2) Baseball's total HFA is smallest in major sports (home win% ~.53–.54 vs NFL ~.57, NBA ~.60 —
+  **WEB-VERIFY before citing**) and its known mechanisms are **crowd-independent**: batting last
+  (rules edge) + park familiarity survive an empty stadium; the crowd→official-bias channel that
+  drives NFL/NBA HFA is weak in baseball. (3) Run-margin is the noisiest outcome (Phase 5), and
+  MLB's MDE is **10.6×** its own HFA — the worst cell in the study. (4) Confound is WORST in
+  baseball: 2020–21 stacked the extra-innings ghost runner (favours batting-last = home), the
+  universal DH, 7-inning doubleheaders and a regional 60-game schedule — inseparable in-model,
+  several pushing HFA the home team's way. The `mlb_treated_split.csv` check came out
+  **inconclusive** (both years slightly positive) — it does **not** confirm the rule-artifact
+  story. Honest claim: "no detectable MLB crowd effect"; can **NOT** claim "crowds don't matter in
+  baseball".
+- **Cite Ganz & Allsop (2024) — not Higgs & Stavness — for NBA 2.13 → 0.44.** Soften "near-unanimous
+  literature" to "predominantly but not unanimously". Lift §§1–5 of `docs/literature-review.md`
+  directly; every number in it was independently reproduced during review.
 
-- **⬅ NEXT — Phase 7 (NEW): pre-write-up consolidation.** Spec APPROVED, plan NOT yet written.
-  `docs/superpowers/specs/2026-07-25-pre-writeup-consolidation-design.md`. **Next session: run
-  `writing-plans` for this spec, then execute.** Three workstreams, ordered **B → A → C**:
-  - **A — `src/models/sensitivity.py`** (5 functions → 5 CSVs). Five numbers destined for the
-    paper currently exist ONLY as prose in this file: the pooled meta-analysis, trend
-    sensitivity, season-FE sensitivity, the NHL within-2021 dose curve, and the MLB
-    treated-season split. Prose is not reproducible and the two most contestable numbers are in
-    it. `within_season_dose` runs for **all four sports** (approved) so the endogeneity sign-flip
-    can be tested for reproduction, and every row carries its fitted support range.
-  - **B — literature positioning** → `docs/literature-review.md` + a real `paper/references.bib`
-    (currently ONE comment line, zero entries). **The study's null is in tension with a
-    near-unanimous literature**: a systematic review of football ghost-game studies found NOT ONE
-    reporting increased HFA (6 no change, 2 slightly reduced, 8 reduced, 10 strongly reduced);
-    Higgs & Stavness (2021) report NBA 2.13 → 0.44 pts (vs our 2.26 → 0.92); a PLOS One study
-    finds fan absence removes HFA in NHL **penalty calls**. Four questions, and **Q3 is the one
-    that could change the paper's conclusion: are we simply underpowered relative to studies that
-    found effects?** (Compare our MDEs — NHL's is ~6.3pp — against their reported effect sizes.)
-    Q4 matters too: mechanism-vs-outcome plausibly reconciles the NHL penalty finding with our
-    NHL outcome null. Literature runs FIRST so its findings can shape workstream A.
-  - **C — paper-facing + correctness fixes ONLY** (scope decision: the ~20 latent/cosmetic Minors
-    are catalogued, NOT churned through estimator code now producing final byte-verified numbers).
-    `summarize(panel, playoffs=False)` — the planned playoff-HFA subsection **cannot currently be
-    written** because `descriptive.py:33,57` hardcode `~is_playoff`; NBA palette contrast **2.62 <
-    3:1** on print-bound figures + delete the phantom `scripts/validate_palette.js` reference;
-    verify 3 claims stated as fact (NHL 2021 realignment, TOR/EDM own-arena bubble games, hub
-    dates); fix the `extra_controls` duplicate-column footgun (**stops being latent — this phase
-    adds callers**) and the stale `test_config_has_three_sports` name.
-  - **§6 of the spec is a "must NOT do" list** — do not restate the pooled estimate as a precision
-    claim (the sports share a BIAS, not just noise); do not read absence of heterogeneity as
-    evidence of homogeneity (no power at k=4); do not re-specify the frozen 6a model; do not call
-    any sport's result a "clean null".
-
-- **Phase 7 (OLD) — bubble decomposition CANCELLED as a code phase** (decided 2026-07-24; the
-  Phase 7 slot is now reused by the consolidation phase above). The NBA bubble decomposition +
-  seeding placebo becomes a short, explicitly-hedged **subsection of the Phase 8 write-up**,
-  computed inline. *Why:* the seeding placebo is n=88 with margin +1.65 (SE 1.35) → CI ≈
-  [−1.0, +4.3], which contains both 0 and full normal HFA (2.26) — a test that cannot fail. The
-  decomposition's second row comes out wrong-signed (`empty − bubble = −0.73`). And its stated
-  job was false: it is **NOT** the disentangler for the 6a/6b confound, because the bubble sits
-  *inside* the pandemic window and swaps one bundled treatment for another. Also, the placebo's
-  null isn't cleanly zero — bubble "home" teams kept court branding, uniform choice, and
-  bench/second-half conventions. **NHL's bubble does not help**: all 130 games are playoffs
-  (quality-confounded), so they can feed neither the placebo (needs `is_playoff==False`) nor the
-  regular-season decomposition table. Report the regime table with SEs and draw no inference.
-- **Phase 8 — Quarto write-up.** Carry the three 6a honesty corrections above + the
-  playoff-exclusion caveat + a **descriptive playoff-HFA subsection** (reuse
-  `descriptive.summarize()` with `is_playoff==True`; blended with seeding quality → asterisk).
-  **From 6b:** present 6a (adjusted) + 6b (raw before/after) side by side; use the precise
-  "comparative interrupted time series / away-team-as-control" naming, not literal "2×2 DiD";
-  state the shared 6a/6b confound explicitly and point at Phase 7 as the only disentangler.
-  `did_hfa_shrink.png` is the intuitive centerpiece figure.
-- **Why MLB shows no/faint-wrong-sign crowd effect (write-up section, all 3 methods agree).**
-  (1) It's statistically ZERO, not a reversal — margin CI [−0.39,+0.16] p.42, win% CI
-  [−0.038,+0.013] p.33; the negative sign is noise, don't over-read it. (2) Baseball's total
-  HFA is smallest in major sports (home win% ~.53–.54 vs NFL ~.57, NBA ~.60 — WEB-VERIFY before
-  citing), and its known mechanisms are **crowd-independent**: batting last (rules edge) + park
-  familiarity (walls/sightlines/positioning) survive an empty stadium; the crowd→official-bias
-  channel that drives NFL/NBA HFA is weak in baseball. (3) Run-margin is the noisiest outcome
-  (worst signal/noise cell — Phase 5). (4) Confound is WORST in baseball: 2020–21 had more
-  home-relevant rule changes than NFL/NBA — extra-innings ghost runner (favors batting-last =
-  home), universal DH (2020), 7-inning DHs, regional 60-game schedule — inseparable in-model and
-  several push HFA the home team's way, plausibly producing the faint wrong sign. Honest claim:
-  "no detectable MLB crowd effect"; can NOT claim "crowds don't matter in baseball" (underpowered
-  + confounded). **Optional cheap check (deferred):** split MLB treated into 2020 vs 2021
-  separately — if the faint positive-HFA blip lives entirely in 2020 (rule-change season), that
-  supports rule-artifact-not-crowd. A few lines against the existing panel, no new infra.
-- **Delete ESPN caches** (`data/raw/*/espn`, ~14GB MLB + ~6GB NBA) once parquets verified —
-  gitignored/local-only; only near project end (avoid re-pull risk).
+**Deferred (post-write-up):**
+- **Delete ESPN caches** (`data/raw/*/espn`, ~14GB MLB + ~6GB NBA + ~3GB NHL) once the parquets are
+  verified — gitignored/local-only; only near project end (avoid re-pull risk).
 
 **Maybe-later (optional — the 4-sport study is complete on its own):**
 - **The sport roster is closed at four, on structural (outcome-independent) grounds.** Soccer/MLS:
@@ -906,9 +1122,6 @@ appreciable point estimate (+4.6pp, p=.20).
   ~32 games. NCAA FB/BB: hundreds of unstable rosters break team-FE + Elo, different data source —
   a separate study, not a loader. Recording these matters: sport selection must be defensible as
   outcome-independent, and NHL was added *before* its result was known and reported unchanged after.
-- **Build the pooled cross-sport meta-estimate in code** (see the NHL section's ⚠️). Currently
-  computed ad hoc; `twfe_cross_sport.csv` is only a per-sport table. Inverse-variance weighting of
-  the win% LPM coefficients, with the Cochran's-Q heterogeneity test alongside it.
 - **Deferred NHL sensitivity checks (neither load-bearing):** (a) shootout-zeroed margin — re-run
   NHL `home_margin` with `status.period == 5` games set to 0, a few lines against the built panel,
   available if anyone questions the ±1 censoring given 41.5% of games are one-goal; (b)

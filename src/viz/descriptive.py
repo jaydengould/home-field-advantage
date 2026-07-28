@@ -16,21 +16,34 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 SPORTS = ["nfl", "mlb", "nba", "nhl"]
 
-# dataviz skill categorical slots 1-3 (blue/green/magenta), validated colorblind-safe
-# via scripts/validate_palette.js (worst adjacent CVD ΔE 17.6, normal-vision ΔE 29.0).
-# Magenta sits below the 3:1 contrast floor -> relief rule -> legend + markers below.
-# nhl (slot 4, amber) matches src/models/twfe.py SPORT_COLORS for cross-figure consistency.
-SPORT_COLORS = {"nfl": "#2a78d6", "mlb": "#008300", "nba": "#e87ba4", "nhl": "#e08b00"}
+# Custom categorical palette — NOT the dataviz skill's documented slots (those
+# put green #008300 and amber #eda100/#e87ba4 too close under CVD all-pairs
+# simulation for a 4-series line chart). nba magenta / nhl red-orange were
+# swept and validator-checked against the skill's bundled Machado-2009 CVD
+# model. Every hue clears the 3:1 contrast floor against white, and every
+# PAIR clears the CVD separation floor — both enforced by
+# tests/test_descriptive.py (test_every_sport_color_clears_the_3to1_contrast_floor,
+# test_every_sport_color_pair_clears_the_cvd_floor). Must stay identical to
+# src/models/twfe.py SPORT_COLORS. MARKERS gives each sport a distinct shape
+# too, so identity survives on shape alone regardless of CVD condition.
+SPORT_COLORS = {"nfl": "#2a78d6", "mlb": "#008300", "nba": "#a4036f", "nhl": "#e42800"}
+MARKERS = {"nfl": "o", "mlb": "s", "nba": "^", "nhl": "D"}
 
 
-def _clean_home(panel: pd.DataFrame) -> pd.DataFrame:
-    """Regular-season true-home games (drop neutral/relocated/bubble)."""
+def _clean_home(panel: pd.DataFrame, playoffs: bool = False) -> pd.DataFrame:
+    """True-home games (drop neutral/relocated/bubble), regular season by default.
+
+    playoffs=True selects the postseason slice instead. Playoff HFA is NOT
+    comparable to the regular-season number: the playoff home team is the better
+    seed, so home advantage is blended with a quality asymmetry, and the treated
+    seasons' postseasons are largely bubble/neutral. Reported with an asterisk."""
     excl = (
         panel["neutral_site"].fillna(False)
         | panel["relocated_home"].fillna(False)
         | panel["is_bubble"].fillna(False)
     )
-    return panel[(~panel["is_playoff"].fillna(False)) & (~excl)]
+    is_playoff = panel["is_playoff"].fillna(False)
+    return panel[(is_playoff if playoffs else ~is_playoff) & (~excl)]
 
 
 def _agg(games: pd.DataFrame) -> dict:
@@ -50,11 +63,15 @@ def _agg(games: pd.DataFrame) -> dict:
     }
 
 
-def summarize(panel: pd.DataFrame) -> pd.DataFrame:
-    """Per-season + pooled-full-crowd descriptive HFA for one sport."""
+def summarize(panel: pd.DataFrame, playoffs: bool = False) -> pd.DataFrame:
+    """Per-season + pooled-full-crowd descriptive HFA for one sport.
+
+    playoffs=False (default) is the shipped Phase 5 behaviour and every number
+    already published; playoffs=True gives Phase 8 its postseason subsection."""
     sport = panel["sport"].iloc[0]
-    clean = _clean_home(panel)
-    reg = panel[~panel["is_playoff"].fillna(False)]
+    clean = _clean_home(panel, playoffs)
+    is_playoff = panel["is_playoff"].fillna(False)
+    reg = panel[is_playoff if playoffs else ~is_playoff]
     rows = []
     for season, g in clean.groupby("season"):
         rows.append({
@@ -87,10 +104,11 @@ def plot_hfa(table: pd.DataFrame) -> plt.Figure:
     for sport, g in per.groupby("sport"):
         g = g.sort_values("season")
         c = SPORT_COLORS.get(sport)
+        m = MARKERS.get(sport, "o")
         ax1.errorbar(g["season"], g["home_win_pct"], yerr=g["home_win_se"],
-                     label=sport, color=c, marker="o", capsize=3)
+                     label=sport, color=c, marker=m, capsize=3)
         ax2.errorbar(g["season"], g["mean_home_margin"], yerr=g["home_margin_se"],
-                     label=sport, color=c, marker="o", capsize=3)
+                     label=sport, color=c, marker=m, capsize=3)
     ax1.axhline(0.5, ls="--", color="gray", lw=1)
     ax2.axhline(0.0, ls="--", color="gray", lw=1)
     for ax in (ax1, ax2):

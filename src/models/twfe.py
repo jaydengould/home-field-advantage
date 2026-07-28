@@ -28,8 +28,12 @@ import matplotlib.pyplot as plt  # noqa: E402
 SPORTS = ["nfl", "mlb", "nba", "nhl"]
 TREATMENT = "crowd_pct"
 CONTROLS = ["crowd_pct", "elo_diff", "rest_diff", "away_travel_km"]
-# dataviz skill categorical slots 1-4, matches src/viz/descriptive.py
-SPORT_COLORS = {"nfl": "#2a78d6", "mlb": "#008300", "nba": "#e87ba4", "nhl": "#e08b00"}
+# Custom categorical palette, validator-checked for contrast + CVD pairwise
+# separation (not the dataviz skill's documented slots — see the comment in
+# src/viz/descriptive.py for why). Must stay identical to that module's
+# SPORT_COLORS. MARKERS gives each sport a distinct shape too.
+SPORT_COLORS = {"nfl": "#2a78d6", "mlb": "#008300", "nba": "#a4036f", "nhl": "#e42800"}
+MARKERS = {"nfl": "o", "mlb": "s", "nba": "^", "nhl": "D"}
 
 
 def _restricted_seasons(treated: list[int]) -> set[int]:
@@ -59,22 +63,34 @@ def _prep(panel: pd.DataFrame) -> pd.DataFrame:
 
 
 def fit(panel, outcome, sample="pooled", treated_seasons=None, extra_controls=(),
-        drop_controls=()):
+        drop_controls=(), trend="linear", season_fe=False, report=None):
     """Fit the TWFE spec for one sport/outcome/sample. Pure (no disk/net).
 
     outcome in {"home_margin", "home_win"}; home_win runs as a linear
-    probability model (0/1). Returns a flat dict of the crowd_pct coefficient
-    with cluster-robust SE/CI plus the control coefficients.
+    probability model (0/1). Returns a flat dict of the reported coefficient
+    with cluster-robust SE/CI plus the other regressors' coefficients.
 
     drop_controls removes named controls from the default set (the symmetric
     counterpart to extra_controls); used by the NHL travel-confound diagnostic.
+
+    trend / season_fe / report / sample="treated" exist for Phase 7's
+    sensitivity table. Their DEFAULTS reproduce the frozen 6a specification
+    exactly — do not change the defaults.
     """
+    if season_fe and trend != "none":
+        raise ValueError("season_fe=True requires trend='none' (a linear trend "
+                         "is collinear with full season dummies)")
     sport = panel["sport"].iloc[0]
     df = _prep(panel)
     if sample == "restricted":
         df = df[df["season"].isin(_restricted_seasons(treated_seasons))]
+    elif sample == "treated":
+        df = df[df["season"].isin(treated_seasons)]
 
-    controls = [c for c in CONTROLS if c not in drop_controls] + list(extra_controls)
+    # dict.fromkeys de-dupes while preserving order: an extra_control naming an
+    # existing control would otherwise duplicate the column and break d[controls].
+    controls = list(dict.fromkeys(
+        [c for c in CONTROLS if c not in drop_controls] + list(extra_controls)))
     d = df[[outcome, "home_team", "season"] + controls].copy()
     d[outcome] = d[outcome].astype(float)          # bool/int/Int64 -> float (LPM safe)
     d[controls] = d[controls].astype(float)
@@ -86,25 +102,34 @@ def fit(panel, outcome, sample="pooled", treated_seasons=None, extra_controls=()
     # season dummies are near-collinear with the time-clustered crowd shock and
     # would absorb the natural experiment; a linear trend only nets out drift.
     d["season_trend"] = (d["season"] - d["season"].min()).astype(float)
-    regressors = controls + ["season_trend"]
+    d["season_trend_sq"] = d["season_trend"] ** 2
+    trend_map = {"none": [], "linear": ["season_trend"],
+                 "quadratic": ["season_trend", "season_trend_sq"]}
+    if trend not in trend_map:
+        raise ValueError(f"trend must be one of {list(trend_map)}, got {trend!r}")
+    regressors = controls + trend_map[trend]
 
     d = d.set_index(["home_team", "season"])
     res = PanelOLS(
-        d[outcome], d[regressors], entity_effects=True, time_effects=False
+        d[outcome], d[regressors], entity_effects=True, time_effects=season_fe
     ).fit(cov_type="clustered", cluster_entity=True)
     ci = res.conf_int()
+    key = report or TREATMENT
+    if key not in regressors:
+        raise ValueError(f"report must be one of {regressors}, got {key!r}")
     out = {
         "sport": sport, "outcome": outcome, "sample": sample,
-        "coef": float(res.params[TREATMENT]),
-        "se": float(res.std_errors[TREATMENT]),
-        "ci_low": float(ci.loc[TREATMENT, "lower"]),
-        "ci_high": float(ci.loc[TREATMENT, "upper"]),
-        "pvalue": float(res.pvalues[TREATMENT]),
+        "trend": trend, "season_fe": season_fe, "reported": key,
+        "coef": float(res.params[key]),
+        "se": float(res.std_errors[key]),
+        "ci_low": float(ci.loc[key, "lower"]),
+        "ci_high": float(ci.loc[key, "upper"]),
+        "pvalue": float(res.pvalues[key]),
         "n_obs": int(res.nobs),
         "n_dropped": int(n_dropped),
         "n_entities": int(d.index.get_level_values(0).nunique()),
     }
-    out.update({f"coef_{c}": float(res.params[c]) for c in controls if c != TREATMENT})
+    out.update({f"coef_{c}": float(res.params[c]) for c in regressors if c != key})
     return out
 
 
@@ -120,7 +145,8 @@ def plot_effect(results: pd.DataFrame) -> plt.Figure:
             ax.errorbar(
                 r["coef"], y,
                 xerr=[[r["coef"] - r["ci_low"]], [r["ci_high"] - r["coef"]]],
-                fmt="o", color=SPORT_COLORS.get(r["sport"], "gray"), capsize=3,
+                marker=MARKERS.get(r["sport"], "o"), linestyle="none",
+                color=SPORT_COLORS.get(r["sport"], "gray"), capsize=3,
             )
         ax.set_yticks(range(len(sub)))
         ax.set_yticklabels([f"{r['sport']}·{r['sample']}" for _, r in sub.iterrows()])

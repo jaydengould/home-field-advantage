@@ -5,6 +5,7 @@
 # officially support newer versions.
 pandas>=2.0,<2.3
 numpy>=1.26,<2.0
+scipy
 statsmodels
 linearmodels
 

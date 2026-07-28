@@ -133,6 +133,95 @@ def test_n_obs_tracks_estimation_sample_when_dropped_control_has_nans():
     assert reduced["n_obs"] > base["n_obs"]      # the hazard the diagnostic guards against
 
 
+def test_defaults_unchanged_by_new_params():
+    # The 6a spec is frozen: the default call path must be byte-identical.
+    panel = _synth(beta=3.0)
+    a = fit(panel, "home_margin", "pooled", [2020, 2021])
+    b = fit(panel, "home_margin", "pooled", [2020, 2021],
+            trend="linear", season_fe=False, report=None)
+    assert a == b
+    assert a["trend"] == "linear" and a["season_fe"] is False
+
+
+def test_trend_options_change_the_fit_but_not_the_sample():
+    # Asserting n_obs equality on a NaN-free _synth would be VACUOUS (same
+    # standard as test_n_obs_tracks_estimation_sample_when_dropped_control_has_nans
+    # above): the trend columns are derived from "season", which is never NaN, so
+    # any implementation would pass trivially. Inject NaNs into a base control so
+    # the equality is a real claim about listwise dropna happening identically
+    # across trend specs, not a coincidence of a clean fixture.
+    panel = _synth(beta=3.0)
+    panel.loc[panel.index[:40], "away_travel_km"] = np.nan
+    fits = {t: fit(panel, "home_margin", "pooled", [2020, 2021], trend=t)
+            for t in ("none", "linear", "quadratic")}
+    assert len({f["n_obs"] for f in fits.values()}) == 1        # same rows, different spec
+    assert fits["none"]["n_obs"] == len(panel) - 40             # the 40 NaN rows really are dropped
+    assert fits["none"]["coef"] != fits["linear"]["coef"]        # trend actually enters
+    assert "coef_season_trend_sq" not in fits["linear"]
+    # Planted beta survives a season control: _synth's season_fx is exactly linear
+    # in season, so trend="linear"/"quadratic" fully absorb it via season_trend.
+    # trend="none" leaves season_fx unmodeled, and it correlates with crowd_pct's
+    # season-varying base (0.85 pre-treatment -> 0.30 treated) -- exactly the
+    # omitted-variable failure mode this module's own docstring warns about for
+    # full season FE, just weaker. Verified empirically (not in this test): the
+    # ~1.0 downward bias persists at 15x the sample size and across seeds, so it
+    # is structural, not small-sample noise -- "none" is correctly expected to be
+    # biased, not merely noisier.
+    for t in ("linear", "quadratic"):
+        assert fits[t]["coef"] == pytest.approx(3.0, abs=0.6)
+    assert fits["none"]["coef"] < fits["linear"]["coef"] - 0.5
+
+
+def test_season_fe_requires_no_trend():
+    panel = _synth(beta=3.0)
+    with pytest.raises(ValueError):
+        fit(panel, "home_margin", "pooled", [2020, 2021], season_fe=True, trend="linear")
+    res = fit(panel, "home_margin", "pooled", [2020, 2021], season_fe=True, trend="none")
+    assert res["season_fe"] is True
+    assert res["n_obs"] > 0
+    # Pin that time_effects actually engages PanelOLS (not a no-op echoing the
+    # input): full season FE must land on a materially different coefficient
+    # than zero season control (measured 3.02 vs 1.98) — this fails if
+    # twfe.py's `time_effects=season_fe` were hardcoded to False.
+    no_control = fit(panel, "home_margin", "pooled", [2020, 2021],
+                      season_fe=False, trend="none")
+    assert abs(res["coef"] - no_control["coef"]) > 0.5
+
+
+def test_invalid_trend_and_report_raise_value_error():
+    panel = _synth(beta=3.0)
+    with pytest.raises(ValueError):
+        fit(panel, "home_margin", "pooled", [2020, 2021], trend="cubic")
+    with pytest.raises(ValueError):
+        fit(panel, "home_margin", "pooled", [2020, 2021], report="not_a_regressor")
+
+
+def test_treated_sample_keeps_only_treated_seasons():
+    panel = _synth(seasons=(2018, 2019, 2020, 2021))
+    res = fit(panel, "home_margin", "treated", [2020, 2021], trend="none")
+    assert res["n_obs"] == 2 * 8 * 14        # 2 treated seasons * 8 teams * 14 games
+
+
+def test_report_selects_which_coefficient_is_headlined():
+    panel = _synth(beta=3.0)
+    base = fit(panel, "home_margin", "pooled", [2020, 2021])
+    elo = fit(panel, "home_margin", "pooled", [2020, 2021], report="elo_diff")
+    assert elo["coef"] == pytest.approx(base["coef_elo_diff"])
+    assert elo["coef_crowd_pct"] == pytest.approx(base["coef"])   # roles swap
+    assert elo["se"] > 0 and elo["ci_low"] < elo["coef"] < elo["ci_high"]
+
+
+def test_extra_controls_duplicate_is_deduped():
+    # C4: naming a control already in CONTROLS produced a duplicate column and
+    # broke d[controls]. This phase adds callers, so it stops being latent.
+    panel = _synth(beta=3.0)
+    base = fit(panel, "home_margin", "pooled", [2020, 2021])
+    dup = fit(panel, "home_margin", "pooled", [2020, 2021],
+              extra_controls=["elo_diff"])
+    assert dup["coef"] == pytest.approx(base["coef"])
+    assert dup["n_obs"] == base["n_obs"]
+
+
 def test_plot_effect_returns_figure():
     from src.models.twfe import plot_effect
     rows = pd.DataFrame([

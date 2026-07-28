@@ -1,8 +1,11 @@
+import itertools
+import math
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from src.viz.descriptive import summarize, _print_gate
+from src.viz.descriptive import summarize, _print_gate, SPORT_COLORS
 
 
 def _panel():
@@ -101,3 +104,91 @@ def test_gate_checks_reports_no_dip(capsys):
     _print_gate(table)
     out = capsys.readouterr().out
     assert "[CHECK] mlb" in out
+
+
+def test_summarize_playoffs_flag_selects_the_postseason_slice():
+    panel = _panel()
+    reg = summarize(panel)                       # default: regular season, unchanged
+    post = summarize(panel, playoffs=True)
+
+    # the fixture's only playoff game is 2019, margin +14, a home win
+    p19 = post[post["season"] == 2019].iloc[0]
+    assert p19["n_games"] == 1
+    assert p19["mean_home_margin"] == 14
+    assert p19["home_win_pct"] == 1.0
+    # the regular-season slice is untouched by the new parameter
+    assert reg[reg["season"] == 2019].iloc[0]["n_games"] == 3
+    assert list(reg.columns) == list(post.columns)
+    # no 2020 playoff game in the fixture -> only 2019 + the pooled row
+    assert set(post["season"]) == {2019, "pooled_fullcrowd"}
+
+
+def test_sport_color_and_marker_dicts_match_across_modules():
+    from src.models.twfe import SPORT_COLORS as a, MARKERS as am
+    from src.viz.descriptive import SPORT_COLORS as b, MARKERS as bm
+    assert a == b                          # two dicts that must never drift
+    assert am == bm                        # markers carry sport identity under CVD
+
+
+def _lum(hexcode):
+    c = [int(hexcode[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+
+@pytest.mark.parametrize("sport,hexcode", list(SPORT_COLORS.items()))
+def test_every_sport_color_clears_the_3to1_contrast_floor(sport, hexcode):
+    # Parametrized (not a for-loop with one assert) so a second failing color
+    # can't hide behind the first -- that's exactly what hid the nhl failure
+    # when this test was first written against an assert-in-a-loop.
+    ratio = 1.05 / (_lum(hexcode) + 0.05)
+    assert ratio >= 3.0, f"{sport} {hexcode} contrast {ratio:.2f} < 3:1"
+
+
+# Machado, Oliveira & Fernandes (2009) CVD transforms at severity 1.0, linear RGB.
+# Copied verbatim from the dataviz skill's bundled scripts/validate_palette.js
+# (the skill lives outside this repo, so "import" isn't available -- keep these
+# constants in lockstep with that file by hand if either changes).
+_MACHADO = {
+    "protan": [[0.152286, 1.052583, -0.204868],
+               [0.114503, 0.786281, 0.099216],
+               [-0.003882, -0.048116, 1.051998]],
+    "deutan": [[0.367322, 0.860646, -0.227968],
+               [0.280085, 0.672501, 0.047413],
+               [-0.011820, 0.042940, 0.968881]],
+}
+_CVD_FLOOR = 6.0  # validate_palette.js CVD_FLOOR -- WARN/legal-with-labels band starts here
+
+
+def _lin(hexcode):
+    c = [int(hexcode[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    return [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+
+
+def _oklab(rgb):
+    r, g, b = rgb
+    l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1 / 3)
+    m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1 / 3)
+    s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1 / 3)
+    return (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s)
+
+
+def _delta_e_cvd(h1, h2, kind):
+    """OKLab Delta-E x100 between two hexes as seen under simulated protan/deutan."""
+    sim = lambda rgb: [max(0, min(1, sum(_MACHADO[kind][i][k] * rgb[k] for k in range(3))))
+                        for i in range(3)]
+    a, b = _oklab(sim(_lin(h1))), _oklab(sim(_lin(h2)))
+    return 100 * math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+
+@pytest.mark.parametrize("pair", list(itertools.combinations(SPORT_COLORS.items(), 2)))
+def test_every_sport_color_pair_clears_the_cvd_floor(pair):
+    # F4: contrast alone doesn't guard the property that actually got tight when
+    # nhl moved to red -- a future edit could preserve contrast while collapsing
+    # a pair under CVD. Floor (6.0), not target (8.0): this asserts a real
+    # invariant, not today's exact measured value.
+    (s1, h1), (s2, h2) = pair
+    worst = min(_delta_e_cvd(h1, h2, "protan"), _delta_e_cvd(h1, h2, "deutan"))
+    assert worst >= _CVD_FLOOR, f"{s1} {h1} vs {s2} {h2}: CVD dE {worst:.2f} < {_CVD_FLOOR}"
