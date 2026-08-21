@@ -5,7 +5,9 @@ as a CSV in results/tables/ rather than as prose. No new OUTCOME model: every
 crowd-effect refit goes through twfe.fit. The only estimation here that is not
 twfe.fit is the auxiliary collinearity regression in _collinearity_r2 (a plain
 statsmodels OLS of crowd_pct on the FE, whose R^2 ships in a CSV) and the
-pooling arithmetic in _meta.
+pooling arithmetic in _meta. dose_overlap is pure description of the treatment
+variable (no outcome touched at all); noise_floor is arithmetic over
+season_effects' already-estimated coefficients.
 
 READ BEFORE INTERPRETING (spec §6):
   - The four sports share a BIAS, not just independent noise. Each estimate is
@@ -19,6 +21,14 @@ READ BEFORE INTERPRETING (spec §6):
     ANTICONSERVATIVE at small k (the Hartung-Knapp correction exists precisely
     for this) — another reason the pooled SE is a lower bound, not a real CI.
   - These are reported sensitivities. The main model is not re-specified.
+  - The treatment is ~SEASON-level, so the effective number of independent
+    treatment draws is the number of SEASONS (6), not the number of games.
+    SEs clustered by home_team assume teams are independent WITHIN a season,
+    which the treatment violates (one league-wide policy shock). season_effects
+    and noise_floor exist to say what inference looks like once that is
+    admitted. Clustering by season instead is NOT the fix (6 clusters is far
+    below the ~40 cluster-robust variance estimation needs; the two-way attempt
+    returns SMALLER SEs, which is the estimator breaking, not a correction).
 """
 from pathlib import Path
 
@@ -309,6 +319,280 @@ def mlb_treated_split(panels=None) -> pd.DataFrame:
     return out
 
 
+def dose_overlap(panels=None) -> pd.DataFrame:
+    """How separated is the treated crowd dose from ordinary-season variation?
+
+    OUTCOME-BLIND BY CONSTRUCTION: reads crowd_pct and season only, never
+    home_margin/home_win. That is what makes it a legitimate basis for treating
+    a sport differently — the same standard the sport roster was closed on.
+
+    `control_overlap` is the share of CONTROL-season games whose crowd_pct falls
+    inside the treated 5-95% range. Near zero == a clean empty-vs-full natural
+    experiment. Large == the treated dose is indistinguishable from ordinary
+    demand variation, so the coefficient is identified off the endogenous
+    channel the design exists to dodge (good teams draw crowds AND win).
+
+    Measured: nfl 0.1%, nba 0.4%, nhl 0.5%, MLB 74.7%. MLB is the outlier, and
+    the contamination is entirely 2021 (progressive reopening, mean .430): MLB
+    2020 alone is 100% empty and overlaps 0.9%, cleaner than NFL. Per-year rows
+    are emitted whenever a sport has >1 treated season, so the split is visible.
+
+    CAVEAT that must travel with the MLB per-year rows: 2020 buys dose
+    cleanliness and pays in confounding — it is also the ghost-runner /
+    universal-DH / 7-inning-doubleheader / 60-game-regional season, several of
+    which push HFA the home team's way. There is no MLB definition that is clean
+    on both. See mlb_treated_split.
+
+    NOTE (operationalisation): the design specifies the treatment as identified
+    off POLICY CAPACITY CAPS; the code uses realised attendance / empirical
+    capacity. Those coincide where caps bound (nfl/nba/nhl) and diverge where
+    they do not (mlb, where realised attendance is mostly demand). This table is
+    that gap made visible."""
+    panels = panels if panels is not None else _load_panels()
+    cfg = _cfg()
+    rows = []
+    for s in SPORTS:
+        treated = cfg[s]["treated_seasons"]
+        d = _prep(panels[s]).dropna(subset=["crowd_pct"])
+        control = d[~d["season"].isin(treated)]["crowd_pct"]
+        # "all_treated" is the headline definition; per-year rows only when the
+        # sport has more than one treated season (otherwise they'd be duplicates).
+        scopes = [("all_treated", treated)]
+        if len(treated) > 1:
+            scopes += [(str(y), [y]) for y in treated]
+        for scope, yrs in scopes:
+            trt = d[d["season"].isin(yrs)]["crowd_pct"]
+            lo, hi = float(trt.quantile(0.05)), float(trt.quantile(0.95))
+            rows.append({
+                "sport": s, "scope": scope,
+                "treated_mean": float(trt.mean()),
+                "treated_p05": lo, "treated_p95": hi,
+                "treated_share_zero": float((trt == 0).mean()),
+                "control_mean": float(control.mean()),
+                "control_p10": float(control.quantile(0.10)),
+                "control_overlap": float(((control >= lo) & (control <= hi)).mean()),
+                "n_treated": int(len(trt)), "n_control": int(len(control)),
+            })
+    out = pd.DataFrame(rows)
+    TABLES.mkdir(parents=True, exist_ok=True)
+    out.to_csv(TABLES / "dose_overlap.csv", index=False)
+    return out
+
+
+def leave_one_season_out(panels=None) -> pd.DataFrame:
+    """Frozen spec, refit with one CONTROL season removed at a time.
+
+    NOT a re-specification and NOT a search: the specification is untouched, only
+    the sample varies, and every control season is dropped exactly once —
+    exhaustively, with no choice to make and therefore nothing to fit to. The
+    headline stays the all-seasons estimate in twfe_*.csv. Treated seasons are
+    never dropped (that would change the treatment definition, not test
+    stability).
+
+    Measured: NFL is the fragile one — dropping 2018 alone takes win% +0.046 ->
+    +0.010 and margin +1.71 -> +0.68, while no other season moves it by much.
+    2018 is also NFL's largest season deviation in season_effects (+3.70 margin,
+    double the treated season's -1.80), so the headline leans on an unusually
+    high-HFA control year. mlb/nhl are stable; nba wobbles modestly on 2023.
+
+    Read it with BOTH halves: this is partly genuine fragility and partly the
+    mechanical property that dropping an endpoint of a 6-season panel tilts the
+    linear trend (2018 is an endpoint). It does not make the NFL result "fake";
+    it removes the last basis for calling it suggestive evidence.
+
+    `delta_over_se_base` scales the movement by the headline SE, which stays
+    interpretable where the base coefficient is ~0 (nhl) and a percent change
+    would not."""
+    panels = panels if panels is not None else _load_panels()
+    cfg = _cfg()
+    rows = []
+    for s in SPORTS:
+        treated = cfg[s]["treated_seasons"]
+        panel = panels[s]
+        for outcome in OUTCOMES:
+            base = fit(panel, outcome, "pooled", treated)
+            for s0 in sorted(panel["season"].unique()):
+                if s0 in treated:
+                    continue
+                r = fit(panel[panel["season"] != s0], outcome, "pooled", treated)
+                rows.append({
+                    "sport": s, "outcome": outcome, "dropped_season": int(s0),
+                    "coef": r["coef"], "se": r["se"],
+                    "coef_base": base["coef"], "se_base": base["se"],
+                    "delta": r["coef"] - base["coef"],
+                    "delta_over_se_base": (r["coef"] - base["coef"]) / base["se"],
+                    "n_obs": r["n_obs"], "n_obs_base": base["n_obs"],
+                })
+    out = pd.DataFrame(rows)
+    TABLES.mkdir(parents=True, exist_ok=True)
+    out.to_csv(TABLES / "leave_one_season_out.csv", index=False)
+    return out
+
+
+def _season_effect_fits(panel: pd.DataFrame, outcome: str, treated: list[int]) -> list[dict]:
+    """One fit per season: that season's deviation from the team-FE + linear-trend
+    baseline. crowd_pct is DROPPED (a full season dummy and a ~season-level dose
+    are the same regressor twice), and seasons enter ONE AT A TIME (all of them
+    at once is full season FE, which is collinear with the trend and is the
+    degenerate spec 6a already rejected).
+
+    The dummy is never null, so all seasons share one listwise sample and the
+    coefficients are mutually comparable."""
+    out = []
+    for s0 in sorted(panel["season"].unique()):
+        col = f"szn_{s0}"
+        p = panel.copy()
+        p[col] = (p["season"] == s0).astype(float)
+        r = fit(p, outcome, "pooled", treated,
+                drop_controls=["crowd_pct"], extra_controls=[col], report=col)
+        out.append({"season": int(s0), "is_treated": s0 in treated,
+                    "coef": r["coef"], "se": r["se"], "n_obs": r["n_obs"]})
+    return out
+
+
+def season_effects(panels=None) -> pd.DataFrame:
+    """Every season's deviation from trend, plus a randomization-inference p.
+
+    This is the honest inference for a treatment that varies at the season level
+    (module docstring). Rather than trusting a game-clustered SE, ask directly:
+    how unusual is the treated season among the seasons we observe? Each season
+    in turn wears the treatment dummy; the real one either stands out or it does
+    not.
+
+    ri_pvalue = share of placebo seasons whose |deviation| is at least the
+    treated season's (the more extreme of the two, for a sport with two treated
+    seasons), with the standard +1/+1 correction.
+
+    ⚠️ ri_pvalue_floor = 1/(1 + n_placebo) — with 6 seasons the SMALLEST
+    achievable p-value is 0.167, so NO result this design can produce is capable
+    of reaching 0.05 under randomization inference. That is not a defect of the
+    calculation; it states how much information a 6-season panel holds about a
+    season-level treatment. The consequence for the paper: report intervals and
+    magnitudes, not p-values against a bar they cannot clear.
+
+    Measured: nothing lands below 0.33. NFL 2018 (+3.70 margin) deviates twice
+    as far as treated NFL 2020 (-1.80) — the ordinary season-to-season noise
+    floor in home advantage exceeds the COVID signal.
+
+    Two caveats: the permuted object is a season DUMMY, not the continuous dose
+    (a continuous treatment cannot be meaningfully permuted across seasons), and
+    the placebo distribution and the real estimate come from the same series.
+    For a sport with 2 treated seasons the exact test would permute over all
+    C(n,2) assignments; the reported value compares the more extreme treated
+    year against the single-season placebo distribution."""
+    panels = panels if panels is not None else _load_panels()
+    cfg = _cfg()
+    rows = []
+    for s in SPORTS:
+        treated = cfg[s]["treated_seasons"]
+        for outcome in OUTCOMES:
+            fits = _season_effect_fits(panels[s], outcome, treated)
+            trt = [abs(f["coef"]) for f in fits if f["is_treated"]]
+            plac = [abs(f["coef"]) for f in fits if not f["is_treated"]]
+            ri = ((1 + sum(x >= max(trt) for x in plac)) / (1 + len(plac))
+                  if trt and plac else float("nan"))
+            for f in fits:
+                rows.append({"sport": s, "outcome": outcome, **f,
+                             "ri_pvalue": ri,
+                             "ri_pvalue_floor": 1.0 / (1 + len(plac)) if plac else float("nan")})
+    out = pd.DataFrame(rows)
+    TABLES.mkdir(parents=True, exist_ok=True)
+    out.to_csv(TABLES / "season_effects.csv", index=False)
+    return out
+
+
+def noise_floor(panels=None) -> pd.DataFrame:
+    """The precision ceiling: how good could this design EVER get?
+
+    Answers "would more control seasons buy a significant result?" — no. Two
+    variance components bind, and NEITHER shrinks when control seasons are added:
+
+      1. `treated_se` — the treated season's own sampling noise. 2020 happened
+         once; you cannot collect more of it. (Inverse-variance combined when a
+         sport has two treated seasons.)
+      2. `sd_true` — genuine season-to-season variation in home advantage. Even
+         knowing the long-run mean exactly, the treated season deviates from it
+         at random, exactly as every other season does. Recovered by removing
+         average sampling variance from the observed spread of season_effects:
+         sd_true^2 = var(season coefs) - mean(se^2).
+
+    floor = hypot(the two); mde_floor = 2.8 * floor (80% power, alpha .05);
+    `ratio_floor` = mde_floor / that sport's total HFA. ratio >= 1 means an
+    effect accounting for ALL of home advantage would still be undetectable.
+
+    ⚠️ UNITS: everything here is on the SEASON-DUMMY (outcome-level) basis —
+    margin points, or win-probability points — the same units as HFA. It is NOT
+    the per-unit-crowd_pct basis that meta_cross_sport's `mde_80` uses. The two
+    ratios are not interchangeable and must not be quoted side by side without
+    saying which is which (that scaling confusion has bitten this project once).
+
+    `mde_naive` is the same quantity computed as the shipped clustered SE would
+    have it, i.e. ignoring sd_true. floor >= naive ALWAYS: admitting season-level
+    shocks makes honest inference WORSE than the reported SE, which is the point
+    of the module docstring's clustering note. `floor_over_naive` is how much.
+
+    Measured: nfl's true between-season SD is 1.84 margin points — larger than
+    its entire 1.75 average HFA — giving ratio_floor 3.27x (margin) / 3.89x
+    (win%). Extending the panel changes no conclusion, and would likely WORSEN
+    randomization inference: more seasons lowers the 1/k floor but enlarges the
+    reference distribution the treated season must beat, and NFL 2018 already
+    out-deviates NFL 2020 two-to-one.
+
+    `sd_true_censored` marks cells where observed spread fell below average
+    sampling noise, so the decomposition clamped at zero. Read those as
+    "between-season variation undetectably small", NOT "literally zero" — nhl
+    and mlb are the sports where extra seasons would help most, and they are
+    still at ~1.0.
+
+    Conservative by construction: se(season dummy) includes uncertainty in the
+    counterfactual as well as the treated season's own, so the floor is if
+    anything overstated as achievable — i.e. the real ceiling is no better.
+
+    HFA denominators come from viz.descriptive.summarize's pooled_fullcrowd row
+    (one definition of HFA across the project). That row is not listwise-dropped
+    on controls the way the fits are; the difference is immaterial at the two
+    decimals the ratio is read to. This is the only function here that reaches
+    outside src/models, so it needs a schema-complete panel — `covid_era` in
+    particular, which summarize uses to choose the full-crowd seasons."""
+    from src.viz.descriptive import summarize
+
+    panels = panels if panels is not None else _load_panels()
+    cfg = _cfg()
+    rows = []
+    for s in SPORTS:
+        treated = cfg[s]["treated_seasons"]
+        pooled = summarize(panels[s])
+        hfa_row = pooled[pooled["season"] == "pooled_fullcrowd"].iloc[0]
+        for outcome in OUTCOMES:
+            fits = _season_effect_fits(panels[s], outcome, treated)
+            coefs = np.array([f["coef"] for f in fits], float)
+            ses = np.array([f["se"] for f in fits], float)
+            sd_season = float(coefs.std(ddof=1))
+            samp_var = float((ses**2).mean())
+            sd_true = float(np.sqrt(max(sd_season**2 - samp_var, 0.0)))
+            trt_ses = np.array([f["se"] for f in fits if f["is_treated"]], float)
+            treated_se = float(np.sqrt(1.0 / (1.0 / trt_ses**2).sum()))
+            floor = float(np.hypot(treated_se, sd_true))
+            hfa = (float(hfa_row["mean_home_margin"]) if outcome == "home_margin"
+                   else float(hfa_row["home_win_pct"]) - 0.5)
+            rows.append({
+                "sport": s, "outcome": outcome,
+                "sd_season": sd_season, "mean_sampling_se": float(np.sqrt(samp_var)),
+                "sd_true": sd_true, "sd_true_censored": sd_true == 0.0,
+                "treated_se": treated_se, "floor": floor, "hfa": hfa,
+                # naive == what the shipped clustered SE implies, ignoring
+                # season-level shocks entirely. floor == the same thing once
+                # sd_true is admitted. floor >= naive ALWAYS, by construction.
+                "mde_naive": 2.8 * treated_se, "ratio_naive": 2.8 * treated_se / hfa,
+                "mde_floor": 2.8 * floor, "ratio_floor": 2.8 * floor / hfa,
+                "floor_over_naive": floor / treated_se,
+            })
+    out = pd.DataFrame(rows)
+    TABLES.mkdir(parents=True, exist_ok=True)
+    out.to_csv(TABLES / "noise_floor.csv", index=False)
+    return out
+
+
 def main() -> None:
     panels = _load_panels()
     meta = meta_cross_sport(panels)
@@ -316,6 +600,10 @@ def main() -> None:
     season_fe = season_fe_sensitivity(panels)
     within = within_season_dose(panels)
     split = mlb_treated_split(panels)
+    overlap = dose_overlap(panels)
+    loso = leave_one_season_out(panels)
+    seasons = season_effects(panels)
+    floor = noise_floor(panels)
 
     print("\n=== pooled cross-sport (win%, LPM) ===")
     print(meta[meta["scope"] != "input"][
@@ -331,6 +619,20 @@ def main() -> None:
     print("\n=== MLB treated-season split ===")
     print(split.to_string(index=False))
     print("NOTE: suggestive only -- cannot separate 2020's rule changes from crowd effects.")
+    print("\n=== treated-vs-control dose overlap (outcome-blind) ===")
+    print(overlap.to_string(index=False))
+    print("NOTE: large control_overlap == the natural experiment barely applies "
+          "to that sport; its coefficient rides on endogenous demand variation.")
+    print("\n=== leave-one-control-season-out (frozen spec, sample only) ===")
+    print(loso.to_string(index=False))
+    print("\n=== season effects + randomization inference ===")
+    print(seasons.to_string(index=False))
+    print("NOTE: ri_pvalue_floor is the SMALLEST p this design can produce. "
+          "Report intervals and magnitudes, not significance.")
+    print("\n=== irreducible noise floor (infinite control seasons) ===")
+    print(floor.to_string(index=False))
+    print("NOTE: ratio_floor >= 1 means an effect the size of ALL of that sport's "
+          "home advantage stays undetectable no matter how many seasons are added.")
 
 
 if __name__ == "__main__":

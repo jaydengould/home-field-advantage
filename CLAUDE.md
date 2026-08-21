@@ -1023,6 +1023,104 @@ table is authoritative and `.17` is not even a rounding of `.186`; a transcripti
 it. `_delta_e_cvd`'s Machado-2009 matrices are copied verbatim from the dataviz skill's bundled
 validator (the skill lives outside the repo, so they must stay in lockstep by hand).
 
+## Pre-write-up audit (done 2026-08-17) — COMPLETE, 4 new tables
+
+User asked for an audit *before* drafting, on the reasoning that a flaw found by a referee is
+worse than a flaw found by us. Three findings survived; all are **additions**, none re-specifies
+the frozen 6a model (language ban #4 intact — only the *sample* varies in A1, and only
+*description* in A2). **153 → 158 tests.** New: `src/models/sensitivity.py` gains
+`dose_overlap`, `leave_one_season_out`, `season_effects`, `noise_floor` (+ `_season_effect_fits`),
+one CSV each. All five pre-existing sensitivity CSVs re-verified byte-identical after the run
+(4sport FE −0.0003335676918608, RE +0.0014224209439121, I² .1378, NHL no-trend margin se .11838,
+NHL collinearity R² .878).
+
+**A2 (the one the user called a must) — MLB is not running the same experiment as the other three.**
+`dose_overlap.csv`. Share of CONTROL-season games falling inside the treated 5–95% dose range:
+**nfl .08% · nba .36% · nhl .53% · MLB 74.7%**. For three sports the treatment is a near-disjoint
+empty-vs-full contrast; for MLB three-quarters of *normal* games sit inside the treated range, so
+its coefficient rides on ordinary demand variation — the exact endogeneity the design exists to
+dodge. **The contamination is entirely 2021**: MLB 2020 is 100% empty and overlaps **0.77%**
+(cleaner than NFL); MLB 2021 has mean dose .430 and overlaps **77.4%**.
+⚠️ **The trade, which must travel with the finding:** 2020 buys dose cleanliness and pays in
+confounding — it is also the ghost-runner / universal-DH / 7-inning-doubleheader / 60-game-regional
+season. No MLB definition is clean on both. Report all three rows; do not promote 2020-only to a
+headline. **Deeper root cause, worth a limitations paragraph:** design decision #2 specifies the
+treatment as identified off *policy capacity caps*; the code uses *realised attendance ÷ empirical
+capacity*. Those coincide where caps bound (nfl/nba/nhl) and diverge where they don't (mlb).
+This table is that gap made visible. **This statistic is OUTCOME-BLIND by construction** (reads
+`crowd_pct` and `season` only) — which is what makes it a legitimate basis for treating a sport
+differently, the same standard the sport roster was closed on.
+
+**A1 — the NFL headline rests on one control season.** `leave_one_season_out.csv`. Frozen spec,
+each *untreated* season dropped once (treated seasons never dropped — that would change the
+treatment definition, not test stability):
+
+| nfl | −2018 | −2019 | −2021 | −2022 | −2023 | base |
+|---|---|---|---|---|---|---|
+| margin | **+0.678** | +2.358 | +1.800 | +1.738 | +1.619 | +1.706 |
+| win% | **+0.0104** | +0.0668 | +0.0588 | +0.0433 | +0.0388 | +0.0464 |
+
+Dropping 2018 alone moves win% by **−0.99 SE** and margin by **−0.90 SE**; no other season moves
+either by more than 0.57 SE. mlb/nhl stable; nba's largest is −0.67 SE (win%, −2023).
+**Why this is disclosure and not p-hacking** (the user's question, worth keeping the answer):
+(1) leave-one-out is exhaustive and mechanical — no choice to make, so nothing to fit to;
+(2) the headline is unchanged, this is a robustness column beside it; (3) **the finding moves
+AGAINST our own point estimate**, and nobody hunts their own effect into the ground.
+⚠️ Read with both halves: partly genuine fragility, partly the mechanical fact that dropping an
+endpoint of a 6-season panel tilts the linear trend (2018 is an endpoint). It removes the basis
+for calling NFL "suggestive evidence"; it does **not** make the NFL result fake.
+**This study was NOT pre-registered** — the CLAUDE.md pre-commitment is internal discipline, not a
+public timestamp. Say so plainly in Phase 8; complete disclosure is what substitutes for it.
+
+**B1 — the treatment is season-level, so inference on ~1,500–13,000 games is wrong.**
+`season_effects.csv` + `noise_floor.csv`. SEs clustered by `home_team` assume teams are
+independent *within* a season; one league-wide policy shock violates that. Effective independent
+treatment draws = **6 seasons**. Clustering by season instead is NOT the fix (6 clusters ≪ the ~40
+cluster-robust variance needs; the two-way attempt returns SEs 0.14–0.76× *smaller* — the
+estimator breaking, not a correction).
+- **Randomization inference** (each season wears the treatment dummy in turn, `crowd_pct` dropped,
+  one dummy at a time so it isn't degenerate full season FE): **no RI p-value below .333**, and
+  `ri_pvalue_floor` = 1/(1+n_placebo) = **.167** (mlb .200, having 2 treated seasons).
+  **No result this design can produce is capable of reaching p<.05 under RI.** Not a defect of the
+  calculation — a statement about how much information a 6-season panel holds.
+  **NFL 2018 deviates +3.697 margin vs treated 2020's −1.802**: ordinary season-to-season noise in
+  home advantage *exceeds* the COVID signal. Consequence for Phase 8: **report intervals and
+  magnitudes, not p-values against a bar they cannot clear.**
+- **Noise floor.** Two components bind and neither shrinks with more control seasons: the treated
+  season's own sampling noise (2020 happened once) and `sd_true`, genuine between-season variation
+  in HFA (`sd_true² = var(season coefs) − mean(se²)`). NFL's `sd_true` is **1.73 margin points —
+  larger than its entire 1.75 HFA**. `ratio_floor = 2.8·hypot(the two) ÷ HFA` is **≥ 1.0 in 7 of 8
+  cells** (nfl 3.23×/3.77× · mlb 6.12×/**0.88×** · nba 1.29×/1.29× · nhl 1.13×/1.46×).
+  **Answer to "would more seasons buy significance?" — no.** It also likely *worsens* RI: more
+  seasons lowers the 1/k floor but enlarges the reference distribution the treated season must
+  beat, and NFL 2018 already out-deviates 2020 two-to-one. Recommendation recorded: **do not
+  extend the panel.**
+- ⚠️ **`floor_over_naive` (1.00–2.17) is the cost of B1**: admitting season-level shocks makes
+  honest inference **worse** than the shipped clustered SE, not better. `mde_floor ≥ mde_naive`
+  always, by construction.
+
+**⚠️ UNITS TRAP — this bit me mid-build and will bite Phase 8.** `noise_floor`'s ratios are on the
+**season-dummy (outcome-level)** basis — margin points / win-prob points, same units as HFA.
+`meta_cross_sport`'s `mde_80` is on the **per-unit-`crowd_pct`** basis. **They are not
+interchangeable and must never be quoted side by side without naming the basis.** The Phase 7
+section's own "seven of eight" statement is the per-unit one; `noise_floor`'s is a *different*
+seven-of-eight that happens to land on the same count. Both are real; they are not the same claim.
+(This is the third scaling confusion in this file — see Phase 7 caveat (2).)
+
+**`sd_true_censored`** (mlb both outcomes, nhl both) marks cells where observed spread fell below
+average sampling noise and the decomposition clamped at 0. Read as "between-season variation
+undetectably small", **not** "literally zero" — those are the sports where extra seasons would help
+most, and they still sit at 0.88–1.46×.
+
+**Checked and clean (no findings):** Elo has no lookahead (pre-game ratings stored, symmetric
+updates, `_prep`/exclusion mask correct); travel and rest logic sound; no estimator bugs.
+
+**Test-caught error worth remembering:** the first `noise_floor` draft asserted
+`mde_floor ≤ mde_current` — backwards, and it also compared the season-dummy basis against the
+per-unit-`crowd_pct` basis. The test failed, the assertion was the thing that was wrong, and the
+mixed-basis column was deleted rather than patched. Left as a reminder that "the floor is the best
+case" intuition is **false** here: the floor is the *honest* case, and it is worse than reported.
+
 ## Status
 
 **Phase 7 (pre-write-up consolidation) COMPLETE.** 152/152 tests. Five new tables in
@@ -1033,10 +1131,23 @@ figures regenerated with the new palette + marker shapes. `docs/literature-revie
 12-entry `paper/references.bib` now exist. All uncommitted, awaiting human commit (git is
 user-owned).
 
+**Pre-write-up audit COMPLETE (2026-08-17).** 158/158 tests. Four new tables (`dose_overlap`,
+`leave_one_season_out`, `season_effects`, `noise_floor`) — see the audit section above. The frozen
+6a/6b headline is untouched and all five pre-existing sensitivity CSVs re-verified identical.
+
 **⬅ NEXT — Phase 8: Quarto write-up → PDF + HTML.** Everything the paper needs now exists as code
 and CSVs — every **estimator** the paper needs now exists. **Two tables remain to be computed
 inline in Phase 8** (neither has a CSV): the descriptive playoff-HFA table via
 `summarize(panel, playoffs=True)`, and the NBA bubble decomposition + seeding placebo.
+
+**⚠️ The audit changes Phase 8's FRAMING, not its estimates.** Three consequences:
+1. **Drop "NFL is the only appreciable point estimate" as a standalone claim** — it survives only
+   with 2018 in the sample (A1). State the leave-one-out beside it.
+2. **MLB gets reclassified**, from "underpowered null" to "the natural experiment barely applies"
+   (A2). Its section stops being about power and starts being about identification.
+3. **Lead with randomization inference, not the clustered p-values** (B1). The `.167` floor makes
+   "not significant" a property of the design rather than a result — which is the paper's thesis
+   stated in one number.
 
 **Four-sport headline (pooled, win-probability LPM — the cross-sport comparable unit):**
 nfl **+0.046** · nba **+0.015** · nhl **+0.007** · mlb **−0.019**. Every per-sport CI crosses zero.

@@ -198,3 +198,108 @@ def test_mlb_treated_split_reports_each_year_separately(monkeypatch, tmp_path):
     assert len(out) == 4                              # 2 years x 2 outcomes
     assert out["se"].gt(0).all()
     assert (tmp_path / "mlb_treated_split.csv").exists()
+
+
+def _two_sport_cfg(monkeypatch, sens, tmp_path, treated=(2020, 2021)):
+    monkeypatch.setattr(sens, "SPORTS", ["nfl", "nba"])
+    monkeypatch.setattr(sens, "TABLES", tmp_path)
+    monkeypatch.setattr(sens, "_cfg", lambda: {"nfl": {"treated_seasons": list(treated)},
+                                               "nba": {"treated_seasons": list(treated)}})
+
+
+def test_dose_overlap_is_zero_when_disjoint_and_one_when_identical(monkeypatch, tmp_path):
+    # THE discriminating check. _synth's own crowd_pct overlaps heavily, so a
+    # smoke test on it would pass under a stub returning any mid-range constant.
+    # Two hand-built extremes pin the statistic to its definition instead.
+    import src.models.sensitivity as sens
+    _two_sport_cfg(monkeypatch, sens, tmp_path)
+
+    disjoint = _synth(); disjoint["sport"] = "nfl"
+    disjoint["crowd_pct"] = np.where(disjoint["season"].isin([2020, 2021]), 0.0, 0.9)
+    identical = _synth(); identical["sport"] = "nba"
+    identical["crowd_pct"] = 0.5                      # every game, treated or not
+
+    out = sens.dose_overlap({"nfl": disjoint, "nba": identical})
+    nfl = out[(out["sport"] == "nfl") & (out["scope"] == "all_treated")].iloc[0]
+    nba = out[(out["sport"] == "nba") & (out["scope"] == "all_treated")].iloc[0]
+    assert nfl["control_overlap"] == pytest.approx(0.0)   # clean natural experiment
+    assert nfl["treated_share_zero"] == pytest.approx(1.0)
+    assert nba["control_overlap"] == pytest.approx(1.0)   # treatment indistinguishable
+    assert (tmp_path / "dose_overlap.csv").exists()
+
+
+def test_dose_overlap_emits_per_year_rows_only_for_multi_treated_sports(monkeypatch, tmp_path):
+    # The MLB finding lives entirely in the per-year split (2020 clean, 2021
+    # contaminated), so the rows have to appear -- and must NOT duplicate the
+    # headline row for a single-treated-season sport.
+    import src.models.sensitivity as sens
+    monkeypatch.setattr(sens, "SPORTS", ["nfl", "nba"])
+    monkeypatch.setattr(sens, "TABLES", tmp_path)
+    monkeypatch.setattr(sens, "_cfg", lambda: {"nfl": {"treated_seasons": [2020, 2021]},
+                                               "nba": {"treated_seasons": [2021]}})
+    out = sens.dose_overlap(_panels())
+    assert set(out[out["sport"] == "nfl"]["scope"]) == {"all_treated", "2020", "2021"}
+    assert set(out[out["sport"] == "nba"]["scope"]) == {"all_treated"}
+
+
+def test_leave_one_season_out_never_drops_a_treated_season(monkeypatch, tmp_path):
+    # Dropping a treated season would change the treatment DEFINITION rather
+    # than test sample stability -- the distinction that keeps this a diagnostic
+    # instead of a re-specification.
+    import src.models.sensitivity as sens
+    _two_sport_cfg(monkeypatch, sens, tmp_path)
+    out = sens.leave_one_season_out(_panels())
+    assert set(out["dropped_season"]) == {2018, 2019}      # _synth's control seasons
+    assert len(out) == 2 * 2 * 2                           # sport x outcome x control season
+    assert (out["n_obs"] < out["n_obs_base"]).all()        # a season really was removed
+    assert out["coef_base"].notna().all()
+    # delta must be the actual difference, not a placeholder
+    assert np.allclose(out["delta"], out["coef"] - out["coef_base"])
+    assert (tmp_path / "leave_one_season_out.csv").exists()
+
+
+def test_season_effects_ri_floor_and_shared_sample(monkeypatch, tmp_path):
+    import src.models.sensitivity as sens
+    _two_sport_cfg(monkeypatch, sens, tmp_path)
+    out = sens.season_effects(_panels())
+    assert len(out) == 2 * 2 * 4                    # sport x outcome x season
+    assert set(out[out["is_treated"]]["season"]) == {2020, 2021}
+    # 4 seasons, 2 treated -> 2 placebos -> smallest achievable p is 1/3.
+    # This is the whole point of the table: no p below the floor is reachable.
+    assert out["ri_pvalue_floor"].eq(1 / 3).all()
+    assert (out["ri_pvalue"] >= out["ri_pvalue_floor"] - 1e-12).all()
+    # the docstring's comparability claim: one listwise sample across seasons,
+    # so the six coefficients are differences in season, not in sample.
+    for _, g in out.groupby(["sport", "outcome"]):
+        assert g["n_obs"].nunique() == 1
+
+
+def test_noise_floor_decomposition_holds_its_identities(monkeypatch, tmp_path):
+    import src.models.sensitivity as sens
+    _two_sport_cfg(monkeypatch, sens, tmp_path)
+    # noise_floor is the only sensitivity function that reaches into
+    # viz.descriptive (for one shared definition of HFA), so its panel needs
+    # covid_era -- which the model-side _synth fixture has no reason to carry.
+    panels = {s: p.assign(covid_era=p["season"].isin([2020, 2021]))
+              for s, p in _panels().items()}
+    out = sens.noise_floor(panels)
+    assert len(out) == 2 * 2                                    # sport x outcome
+    # Removing sampling variance can only SHRINK the observed spread; sd_true
+    # exceeding sd_season would mean the decomposition is inverted.
+    assert (out["sd_true"] <= out["sd_season"] + 1e-12).all()
+    assert (out["sd_true"] >= 0).all()                          # clamped, never negative
+    assert (out["sd_true_censored"] == (out["sd_true"] == 0)).all()
+    # floor combines the two components in quadrature, so it can never be
+    # smaller than either one alone.
+    assert np.allclose(out["floor"], np.hypot(out["treated_se"], out["sd_true"]))
+    assert (out["floor"] >= out["treated_se"] - 1e-12).all()
+    assert np.allclose(out["mde_floor"], 2.8 * out["floor"])
+    assert np.allclose(out["ratio_floor"], out["mde_floor"] / out["hfa"])
+    # DIRECTION: admitting season-level shocks can only make honest inference
+    # WORSE than the shipped SE implies -- the floor ADDS a variance component
+    # the clustered SE ignores. floor < naive would mean sd_true is being
+    # subtracted somewhere instead of combined in quadrature.
+    assert (out["mde_floor"] >= out["mde_naive"] - 1e-12).all()
+    assert (out["floor_over_naive"] >= 1.0 - 1e-12).all()
+    assert np.allclose(out["mde_naive"], 2.8 * out["treated_se"])
+    assert (tmp_path / "noise_floor.csv").exists()
