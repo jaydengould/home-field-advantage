@@ -147,3 +147,46 @@ def test_fetch_summary_returns_none_on_persistent_failure(tmp_path, monkeypatch)
     monkeypatch.setattr(_espn.requests, "get", lambda url, timeout=30: Resp502())
     # no cache file -> _cached_get exhausts retries and raises -> fetch_summary must swallow -> None
     assert _espn.fetch_summary("mlb", "999") is None
+
+
+def test_walk_scoreboard_yields_each_event_once(tmp_path, monkeypatch):
+    # ESPN re-lists a suspended game on its resumption day with the same event id.
+    monkeypatch.setattr(_espn, "_RAW_ROOT", tmp_path)
+    sb_dir = tmp_path / "mlb" / "espn" / "scoreboard"
+    sb_dir.mkdir(parents=True)
+    for d in ("20190615", "20190616"):
+        (sb_dir / f"{d}.json").write_text(json.dumps(_canned_scoreboard()))
+    monkeypatch.setattr(_espn.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("network")))
+    rows = list(_espn.walk_scoreboard("mlb", dt.date(2019, 6, 15), dt.date(2019, 6, 16)))
+    assert [r["event_id"] for r in rows] == ["401"]
+
+
+def test_walk_scoreboard_drops_same_game_under_second_id(tmp_path, monkeypatch):
+    # ESPN occasionally lists one game (same start, same teams) under two event ids.
+    monkeypatch.setattr(_espn, "_RAW_ROOT", tmp_path)
+    sb_dir = tmp_path / "mlb" / "espn" / "scoreboard"
+    sb_dir.mkdir(parents=True)
+    sb = _canned_scoreboard()
+    twin = json.loads(json.dumps([e for e in sb["events"] if e.get("competitions")][0]))
+    twin["id"] = "999"
+    sb["events"].append(twin)
+    (sb_dir / "20190615.json").write_text(json.dumps(sb))
+    monkeypatch.setattr(_espn.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("network")))
+    day = dt.date(2019, 6, 15)
+    assert [r["event_id"] for r in _espn.walk_scoreboard("mlb", day, day)] == ["401"]
+
+
+def test_walk_scoreboard_keeps_final_copy_over_earlier_nonfinal(tmp_path, monkeypatch):
+    # A suspended game shows as in-progress on its original day and final on the resumption day.
+    monkeypatch.setattr(_espn, "_RAW_ROOT", tmp_path)
+    sb_dir = tmp_path / "mlb" / "espn" / "scoreboard"
+    sb_dir.mkdir(parents=True)
+    sb = _canned_scoreboard()
+    live = json.loads(json.dumps(sb))
+    ev = [e for e in live["events"] if e.get("competitions")][0]
+    ev["competitions"][0]["status"] = {"type": {"name": "STATUS_IN_PROGRESS"}}
+    (sb_dir / "20190615.json").write_text(json.dumps(live))
+    (sb_dir / "20190616.json").write_text(json.dumps(sb))
+    monkeypatch.setattr(_espn.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("network")))
+    rows = list(_espn.walk_scoreboard("mlb", dt.date(2019, 6, 15), dt.date(2019, 6, 16)))
+    assert [r["status"] for r in rows] == ["STATUS_IN_PROGRESS", "STATUS_FINAL"]

@@ -1,8 +1,11 @@
-# src/models — causal models
+# src/models — causal estimators
 
-Holds the causal estimators: difference-in-differences (DiD), synthetic
-control, and related panel methods.
+`twfe.py` (6a, dose-response, the engine) · `did.py` (6b, on/off before-after, co-primary) ·
+`sensitivity.py` (robustness tables). All of it is **sport-agnostic** and must never branch on
+sport — sport-specific handling belongs in `src/data/`.
 
-**All modeling code is sport-agnostic.** It operates on the unified panel
-schema produced by `src/data/` and must never branch on sport. If something
-needs sport-specific handling, that belongs in `src/data/`, not here.
+`twfe._exclusion_mask` is the single shared exclusion definition; `did.py` also reuses
+`_restricted_seasons` and `SPORT_COLORS` from `twfe`.
+
+The 6a specification is **frozen** — add sensitivity columns beside it, don't re-specify it.
+Why it is team FE + linear trend (and not two-way FE): `docs/design-decisions.md`.

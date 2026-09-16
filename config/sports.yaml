@@ -5,20 +5,35 @@
 # per-game dose lives in crowd_pct; this only marks which seasons' crowd
 # variation we trust as causal. Season ints follow each data source's labeling.
 nfl:
+  # Real empty/capped games live only in zero_attendance_windows; any attendance==0 outside
+  # them is an ESPN reporting artifact and becomes null crowd_pct in data/processed
+  # (spec docs/superpowers/specs/2026-09-15-zero-attendance-fix-design.md).
+  zero_attendance_windows:
+    - {seasons: [2020]}
   treated_seasons: [2020]        # 2021 reopened to full capacity league-wide
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
   elo: {k: 20, hfa: 48, carryover: 0.667}
 mlb:
+  zero_attendance_windows:
+    - {seasons: [2020]}            # NOT 2021: all 30 clubs admitted fans in 2021
   treated_seasons: [2020, 2021]  # 2020 ~empty, 2021 staggered reopen — confirm in Phase 3
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
   elo: {k: 4, hfa: 24, carryover: 0.667}
 nba:
+  zero_attendance_windows:
+    - {seasons: [2021]}
+    - {start: "2020-07-30", end: "2020-10-31"}                         # Orlando bubble
+    - {start: "2021-12-16", end: "2022-02-20", home_teams: [TOR]}      # Ontario caps
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
   treated_seasons: [2021]        # only 2020-21 (season 2021) is the empty->partial reopening;
                                  # season 2020's non-bubble games are full-crowd pre-COVID, and
                                  # its empty games are the Orlando bubble (excluded via is_bubble)
   elo: {k: 10, hfa: 100, carryover: 0.75}
 nhl:
+  zero_attendance_windows:
+    - {seasons: [2021]}
+    - {start: "2020-08-01", end: "2020-10-31"}                         # Toronto/Edmonton bubble
+    - {start: "2021-12-16", end: "2022-02-20", home_teams: [MTL, OTT, TOR, WPG, CGY, EDM, VAN]}
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
   treated_seasons: [2021]        # only 2020-21 (season 2021) is the empty->partial reopening;
                                  # season 2020's pre-March games are full-crowd, and its empty

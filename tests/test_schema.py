@@ -118,3 +118,17 @@ def test_empty_stadium_crowd_pct_zero_is_valid():
     df["attendance"] = [0]
     df["crowd_pct"] = [0.0]
     validate(df)  # 0 is a real value, must not raise
+
+
+def test_null_crowd_pct_is_valid():
+    df = valid_panel()
+    df["attendance"] = [0]
+    df["crowd_pct"] = [float("nan")]
+    validate(df)  # reporting-artifact zero: dose unknown, must not raise
+
+
+def test_duplicate_game_id_rejected():
+    df = pd.concat([valid_panel(), valid_panel()], ignore_index=True)
+    with pytest.raises(ValueError, match="duplicate game_id"):
+        validate(df)
+

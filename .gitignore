@@ -43,3 +43,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Paper work-in-progress — local only until the user publishes it
+/paper/*
+!/paper/references.bib
+/docs/superpowers/specs/*phase8-paper*
+/docs/superpowers/plans/*phase8-paper*

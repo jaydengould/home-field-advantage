@@ -1,11 +1,12 @@
 # src/data — per-sport loaders
 
-This is the **only** place sport-specific logic is allowed.
+The **only** place sport-specific logic is allowed. Every loader emits the unified 29-column
+panel from `src/schema.py` and passes `validate()`, so everything downstream stays sport-blind.
 
-Every loader must return the **unified game-level panel schema** — the same
-columns regardless of sport — so that everything downstream stays sport-blind.
+`_espn.py` is the shared ESPN layer (`fetch_summary`, `walk_scoreboard`, `derive_capacity`,
+`check_coverage`) — reuse it; don't re-derive per sport. Loaders read `data/raw/<sport>/`
+(immutable, write-once cache) and write `data/interim/<sport>.parquet`.
 
-The exact column set will be defined next session. Until then, the contract is:
-one row per game, identical schema across MLB / NBA / NFL.
+Rest, travel and Elo stay null/1500.0 placeholders here — `src/features/build.py` fills them.
 
-Loaders read from `data/raw/<sport>/` (immutable) and never overwrite it.
+Sourcing details and per-sport edge cases: `docs/data-pipeline.md`.

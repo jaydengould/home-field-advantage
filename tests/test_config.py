@@ -35,3 +35,13 @@ def test_elo_params_present_for_all_sports():
         elo = cfg[sport]["elo"]
         assert {"k", "hfa", "carryover"} <= set(elo)
         assert 0.0 < elo["carryover"] <= 1.0
+
+
+def test_every_sport_has_zero_attendance_windows():
+    cfg = yaml.safe_load(CONFIG.read_text())
+    for sport in ("nfl", "mlb", "nba", "nhl"):
+        w = cfg[sport]["zero_attendance_windows"]
+        assert isinstance(w, list) and w
+        for win in w:
+            assert ("seasons" in win) != ("start" in win)
+            assert set(win) <= {"seasons", "start", "end", "home_teams"}

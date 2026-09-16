@@ -149,7 +149,7 @@ def _collinearity_r2(panel: pd.DataFrame) -> float:
 
     Computed on the exclusion-filtered panel (_prep output), NOT on the same
     listwise-dropna sample `fit()` estimates on (that sample also drops rows
-    missing elo/rest/travel, which crowd_pct itself never is). Measured
+    missing elo/rest/travel; null crowd_pct rows are dropped here too). Measured
     difference is <=0.003 R^2 for all four sports -- invisible at the two
     decimals the paper cites, and it doesn't disturb the NFL > NBA > NHL > MLB
     ordering the argument relies on. An exact match isn't achievable anyway:
@@ -332,9 +332,9 @@ def dose_overlap(panels=None) -> pd.DataFrame:
     demand variation, so the coefficient is identified off the endogenous
     channel the design exists to dodge (good teams draw crowds AND win).
 
-    Measured: nfl 0.1%, nba 0.4%, nhl 0.5%, MLB 74.7%. MLB is the outlier, and
-    the contamination is entirely 2021 (progressive reopening, mean .430): MLB
-    2020 alone is 100% empty and overlaps 0.9%, cleaner than NFL. Per-year rows
+    Measured (post zero-attendance fix): nfl 0.0%, nba 0.2%, nhl 0.4%, MLB 74.6%.
+    MLB is the outlier, and the contamination is entirely 2021 (progressive
+    reopening, mean .436): MLB 2020 alone is 100% empty and overlaps 0.0%. Per-year rows
     are emitted whenever a sport has >1 treated season, so the split is visible.
 
     CAVEAT that must travel with the MLB per-year rows: 2020 buys dose
@@ -593,6 +593,30 @@ def noise_floor(panels=None) -> pd.DataFrame:
     return out
 
 
+def _n_nulled(sport: str) -> int:
+    p = pd.read_parquet(f"data/processed/{sport}.parquet", columns=["attendance", "crowd_pct"])
+    return int(((p["attendance"] == 0) & p["crowd_pct"].isna()).sum())
+
+
+def zero_attendance_sensitivity(pre_dir: Path | None = None) -> pd.DataFrame:
+    """Frozen 6a pooled estimates before vs after nulling ESPN zero-attendance reporting
+    artifacts (spec 2026-09-15). Data correction only; the specification is unchanged."""
+    pre_dir = pre_dir if pre_dir is not None else TABLES / "pre_zero_fix"
+    keep = ["sport", "outcome", "coef", "se", "ci_low", "ci_high", "n_obs"]
+    rows = []
+    for s in SPORTS:
+        pre = pd.read_csv(pre_dir / f"twfe_{s}.csv")
+        post = pd.read_csv(TABLES / f"twfe_{s}.csv")
+        pre, post = (d[d["sample"] == "pooled"][keep] for d in (pre, post))
+        m = pre.merge(post, on=["sport", "outcome"], suffixes=("_pre", "_post"))
+        m["n_nulled"] = _n_nulled(s)
+        rows.append(m)
+    out = pd.concat(rows, ignore_index=True)
+    TABLES.mkdir(parents=True, exist_ok=True)
+    out.to_csv(TABLES / "zero_attendance_sensitivity.csv", index=False)
+    return out
+
+
 def main() -> None:
     panels = _load_panels()
     meta = meta_cross_sport(panels)
@@ -604,6 +628,7 @@ def main() -> None:
     loso = leave_one_season_out(panels)
     seasons = season_effects(panels)
     floor = noise_floor(panels)
+    zero_fix = zero_attendance_sensitivity()
 
     print("\n=== pooled cross-sport (win%, LPM) ===")
     print(meta[meta["scope"] != "input"][
@@ -633,6 +658,8 @@ def main() -> None:
     print(floor.to_string(index=False))
     print("NOTE: ratio_floor >= 1 means an effect the size of ALL of that sport's "
           "home advantage stays undetectable no matter how many seasons are added.")
+    print("\n=== zero-attendance data correction: 6a pooled, pre vs post ===")
+    print(zero_fix.to_string(index=False))
 
 
 if __name__ == "__main__":

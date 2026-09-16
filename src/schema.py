@@ -35,7 +35,7 @@ COLUMNS: dict[str, Col] = {
     "home_win":   Col("boolean", nullable=True),
     "attendance": Col("int", min=0),
     "capacity":   Col("int", min=1),
-    "crowd_pct":  Col("float", min=0.0, max=1.05),
+    "crowd_pct":  Col("float", nullable=True, min=0.0, max=1.05),
     "covid_era":  Col("bool"),
     "home_elo":   Col("float"),
     "away_elo":   Col("float"),
@@ -132,6 +132,11 @@ def validate(df: pd.DataFrame) -> None:
             errors.append(f"{name}: value(s) below min {spec.min}")
         if spec.max is not None and len(nn) and bool((nn > spec.max).any()):
             errors.append(f"{name}: value(s) above max {spec.max}")
+
+    if "game_id" in df.columns and bool(df["game_id"].duplicated().any()):
+        errors.append(f"duplicate game_id: {int(df['game_id'].duplicated().sum())} row(s)")
+    # ponytail: same-game-under-two-ids is deduped in _espn.walk_scoreboard, not here — loader
+    # test fixtures reuse identical synthetic games under distinct ids.
 
     _check_conditionals(df, errors)
 

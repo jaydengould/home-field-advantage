@@ -179,3 +179,48 @@ def test_build_writes_processed_and_validates(tmp_path, monkeypatch):
     assert (b.PROCESSED / "nfl.parquet").exists()
     assert panel["home_elo"].notna().all() and panel["away_elo"].notna().all()
     assert panel["away_travel_km"].notna().any()
+
+
+from src.features.build import null_reporting_zeros
+
+
+def _zpanel(rows):
+    return pd.DataFrame(rows, columns=["season", "date", "home_team", "attendance", "crowd_pct"]).assign(
+        date=lambda d: pd.to_datetime(d["date"], format="ISO8601"))
+
+
+def test_zero_outside_every_window_is_nulled():
+    p = _zpanel([(2019, "2019-05-01", "BOS", 0, 0.0)])
+    out, n = null_reporting_zeros(p, [{"seasons": [2020]}])
+    assert n == 1 and out["crowd_pct"].isna().all()
+
+
+def test_zero_inside_season_window_stays_zero():
+    p = _zpanel([(2020, "2020-08-01", "BOS", 0, 0.0)])
+    out, n = null_reporting_zeros(p, [{"seasons": [2020]}])
+    assert n == 0 and (out["crowd_pct"] == 0.0).all()
+
+
+def test_nonzero_attendance_never_nulled():
+    p = _zpanel([(2019, "2019-05-01", "BOS", 30000, 0.8)])
+    out, n = null_reporting_zeros(p, [])
+    assert n == 0 and out["crowd_pct"].iloc[0] == 0.8
+
+
+def test_date_window_is_inclusive_and_team_scoped():
+    w = [{"start": "2021-12-16", "end": "2022-02-20", "home_teams": ["TOR"]}]
+    p = _zpanel([
+        (2022, "2021-12-16 23:00", "TOR", 0, 0.0),   # start day, in team -> real
+        (2022, "2022-02-20", "TOR", 0, 0.0),         # end day -> real
+        (2022, "2022-02-21", "TOR", 0, 0.0),         # after end -> artifact
+        (2022, "2022-01-10", "BOS", 0, 0.0),         # wrong team -> artifact
+    ])
+    out, n = null_reporting_zeros(p, w)
+    assert n == 2
+    assert out["crowd_pct"].isna().tolist() == [False, False, True, True]
+
+
+def test_helper_does_not_mutate_input():
+    p = _zpanel([(2019, "2019-05-01", "BOS", 0, 0.0)])
+    null_reporting_zeros(p, [])
+    assert p["crowd_pct"].iloc[0] == 0.0

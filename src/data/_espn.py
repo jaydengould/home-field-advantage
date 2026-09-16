@@ -125,7 +125,13 @@ def _fetch_scoreboard(sport: str, day: dt.date, throttle: float = 0.7) -> dict:
 def walk_scoreboard(sport: str, start: dt.date, end: dt.date) -> Iterator[dict]:
     """Yield one normalized dict per ESPN event across [start, end] inclusive.
     Skips events lacking a competitions block or a home/away competitor. Season-type
-    and status filtering is the caller's responsibility."""
+    and status filtering is the caller's responsibility. Each event id is yielded once:
+    ESPN re-lists a suspended game, final and unchanged, on the day it resumed, and
+    occasionally lists one game (same start time, teams and score) under a second id; both
+    are skipped. A doubleheader never shares a start time, so it is kept. Only FINAL events
+    are de-duplicated, so an earlier in-progress copy never suppresses the final one (callers
+    filter status themselves)."""
+    seen: set[str] = set()
     day = start
     while day <= end:
         data = _fetch_scoreboard(sport, day)
@@ -146,6 +152,12 @@ def walk_scoreboard(sport: str, start: dt.date, end: dt.date) -> Iterator[dict]:
             season = ev.get("season", {})
             venue = comp.get("venue", {})
             status = (comp.get("status") or ev.get("status") or {})
+            game_key = (ev.get("date"), home["team"].get("abbreviation"), away["team"].get("abbreviation"),
+                        home.get("score"), away.get("score"))
+            if status.get("type", {}).get("name") == "STATUS_FINAL":
+                if str(ev.get("id")) in seen or game_key in seen:
+                    continue
+                seen.update({str(ev.get("id")), game_key})
             yield {
                 "event_id": str(ev["id"]),
                 "date": ev.get("date"),

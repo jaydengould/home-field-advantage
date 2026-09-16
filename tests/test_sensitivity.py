@@ -303,3 +303,20 @@ def test_noise_floor_decomposition_holds_its_identities(monkeypatch, tmp_path):
     assert (out["floor_over_naive"] >= 1.0 - 1e-12).all()
     assert np.allclose(out["mde_naive"], 2.8 * out["treated_se"])
     assert (tmp_path / "noise_floor.csv").exists()
+
+
+def test_zero_attendance_sensitivity_joins_pre_and_post(tmp_path, monkeypatch):
+    import pandas as pd
+    from src.models import sensitivity as S
+    cols = ["sport", "outcome", "sample", "coef", "se", "ci_low", "ci_high", "n_obs"]
+    row = lambda c, n: ["mlb", "home_win", "pooled", c, 0.01, c - 0.02, c + 0.02, n]
+    pre, post = tmp_path / "pre", tmp_path / "post"
+    pre.mkdir(); post.mkdir()
+    pd.DataFrame([row(-0.019, 12893)], columns=cols).to_csv(pre / "twfe_mlb.csv", index=False)
+    pd.DataFrame([row(-0.017, 12818)], columns=cols).to_csv(post / "twfe_mlb.csv", index=False)
+    monkeypatch.setattr(S, "TABLES", post)
+    monkeypatch.setattr(S, "SPORTS", ["mlb"])
+    monkeypatch.setattr(S, "_n_nulled", lambda sport: 75)
+    out = S.zero_attendance_sensitivity(pre_dir=pre)
+    r = out.iloc[0]
+    assert (r.coef_pre, r.coef_post, r.n_obs_pre, r.n_obs_post, r.n_nulled) == (-0.019, -0.017, 12893, 12818, 75)

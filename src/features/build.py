@@ -90,6 +90,31 @@ def _elo_params(sport: str) -> dict:
     return yaml.safe_load(CONFIG_FILE.read_text())[sport]["elo"]
 
 
+def _zero_windows(sport: str) -> list[dict]:
+    return yaml.safe_load(CONFIG_FILE.read_text())[sport]["zero_attendance_windows"]
+
+
+def null_reporting_zeros(panel: pd.DataFrame, windows: list[dict]) -> tuple[pd.DataFrame, int]:
+    """attendance==0 is a real empty stadium only inside a documented restriction window
+    (config zero_attendance_windows). Outside every window it is an ESPN reporting artifact:
+    crowd_pct -> null (dose unknown). attendance keeps the as-reported 0. Sport-blind."""
+    df = panel.copy()
+    day = pd.to_datetime(df["date"]).dt.normalize()
+    real = pd.Series(False, index=df.index)
+    for w in windows:
+        m = pd.Series(True, index=df.index)
+        if "seasons" in w:
+            m &= df["season"].isin(w["seasons"])
+        if "start" in w:
+            m &= (day >= pd.Timestamp(w["start"])) & (day <= pd.Timestamp(w["end"]))
+        if "home_teams" in w:
+            m &= df["home_team"].isin(w["home_teams"])
+        real |= m
+    artifact = (df["attendance"] == 0) & ~real
+    df.loc[artifact, "crowd_pct"] = np.nan
+    return df, int(artifact.sum())
+
+
 def add_elo(panel: pd.DataFrame, params: dict) -> pd.DataFrame:
     df = panel.copy()
     k, hfa, carry = float(params["k"]), float(params["hfa"]), float(params["carryover"])
@@ -142,6 +167,8 @@ def elo_accuracy(panel: pd.DataFrame, hfa: float) -> tuple[float, float]:
 
 def build(sport: str) -> pd.DataFrame:
     panel = pd.read_parquet(INTERIM / f"{sport}.parquet")
+    panel, n_null = null_reporting_zeros(panel, _zero_windows(sport))
+    print(f"{sport}: nulled {n_null} reporting-artifact zero-attendance crowd_pct")
     panel = add_travel(panel, load_coords())
     panel = add_rest(panel)
     panel = add_elo(panel, _elo_params(sport))
