@@ -10,12 +10,28 @@ nfl:
   # (spec docs/superpowers/specs/2026-09-15-zero-attendance-fix-design.md).
   zero_attendance_windows:
     - {seasons: [2020]}
+  # Reopening rule (spec docs/superpowers/specs/2026-09-16-reopening-zeros-fix-design.md):
+  # sourced first-fans home game (UTC date) and sourced re-closures. Audit: .superpowers/sdd/reopening-zeros-fix/team_audit.csv
+  fans_from:
+    - {season: 2020, team: GB, date: "2020-12-19", source: "https://wrex.com/2020/12/18/green-bay-packers-invite-frontline-workers-to-game-at-lambeau-field"}
+    - {season: 2020, team: PHI, date: "2020-10-18", source: "https://www.philadelphiaeagles.com/news/eagles-welcome-back-fans-to-lincoln-financial-field-in-a-limited-capacity"}
+  reclosures:
+    - {team: ARI, start: "2020-12-06", end: "2020-12-26", source: "https://www.revengeofthebirds.com/2020/11/27/21723185/adhs-az-arizona-cardinals-to-not-allow-fans-at-december-6th-home-game-against-los-angeles-rams"}
+    - {team: BAL, start: "2020-11-22", end: "2020-12-27", source: "https://www.nfl.com/news/eagles-ravens-revert-to-prohibiting-fan-attendance-as-covid-19-cases-rise"}
+    - {team: DEN, start: "2020-11-29", end: "2021-01-03", source: "https://gazette.com/sports/broncos/broncos-no-fans-at-final-three-home-games-due-to-covid-19/article_38a125cc-2b53-11eb-b98e-5b80cac93565.html"}
+    - {team: PHI, start: "2020-11-17", end: "2021-01-03", source: "https://www.nfl.com/news/eagles-ravens-revert-to-prohibiting-fan-attendance-as-covid-19-cases-rise"}
+    - {team: PIT, start: "2020-12-02", end: "2020-12-27", source: "https://steelersnow.com/steelers-no-fans-for-rescheduled-game-vs-ravens-on-sunday/"}
+    - {team: WAS, start: "2020-11-22", end: "2020-12-27", source: "https://www.washingtonpost.com/sports/2020/12/11/washington-football-fedex-field-fans/"}
   treated_seasons: [2020]        # 2021 reopened to full capacity league-wide
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
   elo: {k: 20, hfa: 48, carryover: 0.667}
 mlb:
   zero_attendance_windows:
     - {seasons: [2020]}            # NOT 2021: all 30 clubs admitted fans in 2021
+  # Reopening rule (spec docs/superpowers/specs/2026-09-16-reopening-zeros-fix-design.md):
+  # sourced first-fans home game (UTC date) and sourced re-closures. Audit: .superpowers/sdd/reopening-zeros-fix/team_audit.csv
+  fans_from: []
+  reclosures: []
   treated_seasons: [2020, 2021]  # 2020 ~empty, 2021 staggered reopen — confirm in Phase 3
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
   elo: {k: 4, hfa: 24, carryover: 0.667}
@@ -24,6 +40,15 @@ nba:
     - {seasons: [2021]}
     - {start: "2020-07-30", end: "2020-10-31"}                         # Orlando bubble
     - {start: "2021-12-16", end: "2022-02-20", home_teams: [TOR]}      # Ontario caps
+  # Reopening rule (spec docs/superpowers/specs/2026-09-16-reopening-zeros-fix-design.md):
+  # sourced first-fans home game (UTC date) and sourced re-closures. Audit: .superpowers/sdd/reopening-zeros-fix/team_audit.csv
+  fans_from:
+    - {season: 2021, team: IND, date: "2021-01-24", source: "https://www.wthr.com/article/sports/nba/indiana-pacers/phase-1-of-bankers-life-fieldhouse-renovations-complete-as-fans-return-slowly/531-21e75caa-1766-4148-8908-46d27087b6b3"}
+    - {season: 2021, team: MIA, date: "2021-01-29", source: "https://wsvn.com/sports/miami-heat-welcome-fans-to-home-games-for-1st-time-since-pandemics-start/"}
+    - {season: 2021, team: SAC, date: "2021-04-21", source: "https://www.abc10.com/article/sports/nba/sacramento-kings/sacramento-kings-frontline-workers-first-fans/103-74ad2025-18fe-42e1-918e-fecba60a7df1"}
+  reclosures:
+    - {team: MIN, start: "2021-04-13", end: "2021-04-14", source: "https://www.espn.com/nba/story/_/id/31248968/sources-minnesota-timberwolves-game-vs-brooklyn-nets-rescheduled-tuesday-afternoon"}
+    - {team: MEM, start: "2021-02-18", end: "2021-02-18", source: "https://www.actionnews5.com/2021/02/18/grizzlies-game-will-play-without-fans-because-weather/"}
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
   treated_seasons: [2021]        # only 2020-21 (season 2021) is the empty->partial reopening;
                                  # season 2020's non-bubble games are full-crowd pre-COVID, and
@@ -34,6 +59,14 @@ nhl:
     - {seasons: [2021]}
     - {start: "2020-08-01", end: "2020-10-31"}                         # Toronto/Edmonton bubble
     - {start: "2021-12-16", end: "2022-02-20", home_teams: [MTL, OTT, TOR, WPG, CGY, EDM, VAN]}
+  # Reopening rule (spec docs/superpowers/specs/2026-09-16-reopening-zeros-fix-design.md):
+  # sourced first-fans home game (UTC date) and sourced re-closures. Audit: .superpowers/sdd/reopening-zeros-fix/team_audit.csv
+  fans_from:
+    - {season: 2021, team: BUF, date: "2021-03-18", source: "https://www.nhl.com/sabres/news/sharpen-up-march-18-2021-sabres-bruins-preview-hockey-fights-cancer-night-don-granato-interim-head-coach/c-322642190"}
+    - {season: 2021, team: DET, date: "2021-03-10", source: "https://dailyhive.com/vancouver/american-nhl-teams-allowed-fans-games"}
+    - {season: 2021, team: NSH, date: "2021-01-15", source: "https://dailyhive.com/vancouver/american-nhl-teams-allowed-fans-games"}
+    - {season: 2021, team: STL, date: "2021-01-19", source: "https://www.nhl.com/blues/news/blues-to-welcome-frontline-workers-to-first-homestand/c-320141424"}
+  reclosures: []
   load_seasons: [2018, 2023]     # [start, end] inclusive — seasons the loader pulls
   treated_seasons: [2021]        # only 2020-21 (season 2021) is the empty->partial reopening;
                                  # season 2020's pre-March games are full-crowd, and its empty

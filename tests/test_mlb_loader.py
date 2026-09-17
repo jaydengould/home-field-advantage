@@ -80,6 +80,18 @@ def test_blue_jays_2020_relocated_home():
     assert reloc == {"mlb_1": True, "mlb_2": False, "mlb_3": False}
 
 
+def test_2020_hub_bubble_neutral_site():
+    # DS on (Oct 5-9): hub bubble -> forced True regardless of ESPN's flag.
+    # WC round (Oct 1-2) and 2020 regular season: ESPN's flag stands (False).
+    # 2021 postseason in October: not the 2020 bubble, ESPN's flag stands.
+    panel = _panel_of([_game("1", stype=3, season=2020, date="2020-10-05T20:07Z"),
+                       _game("2", stype=3, season=2020, date="2020-10-02T18:00Z"),
+                       _game("3", stype=2, season=2020, date="2020-09-27T20:00Z"),
+                       _game("4", stype=3, season=2021, date="2021-10-05T20:00Z")])
+    neutral = dict(zip(panel["game_id"], panel["neutral_site"]))
+    assert neutral == {"mlb_1": True, "mlb_2": False, "mlb_3": False, "mlb_4": False}
+
+
 def test_doubleheader_game_ids_unique():
     # same date/teams/venue, two distinct ESPN ids -> two unique game_ids
     panel = _panel_of([_game("100"), _game("101")])

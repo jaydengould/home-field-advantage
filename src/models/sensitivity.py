@@ -37,6 +37,7 @@ import pandas as pd
 import yaml
 from scipy.stats import chi2
 
+from src.features.build import _zero_config, null_reporting_zeros
 from src.models.twfe import CONTROLS, SPORTS, _prep, fit
 
 OUTCOMES = ["home_margin", "home_win"]
@@ -531,9 +532,9 @@ def noise_floor(panels=None) -> pd.DataFrame:
     shocks makes honest inference WORSE than the reported SE, which is the point
     of the module docstring's clustering note. `floor_over_naive` is how much.
 
-    Measured: nfl's true between-season SD is 1.84 margin points — larger than
-    its entire 1.75 average HFA — giving ratio_floor 3.27x (margin) / 3.89x
-    (win%). Extending the panel changes no conclusion, and would likely WORSEN
+    Measured: nfl's true between-season SD is 1.73 margin points — essentially
+    the whole of its 1.75 average HFA — giving ratio_floor 3.23x (margin) /
+    3.77x (win%). Extending the panel changes no conclusion, and would likely WORSEN
     randomization inference: more seasons lowers the 1/k floor but enlarges the
     reference distribution the treated season must beat, and NFL 2018 already
     out-deviates NFL 2020 two-to-one.
@@ -593,28 +594,43 @@ def noise_floor(panels=None) -> pd.DataFrame:
     return out
 
 
-def _n_nulled(sport: str) -> int:
-    p = pd.read_parquet(f"data/processed/{sport}.parquet", columns=["attendance", "crowd_pct"])
-    return int(((p["attendance"] == 0) & p["crowd_pct"].isna()).sum())
+def _n_nulled(sport: str) -> tuple[int, int]:
+    """(fix-1 nulls outside every window, reopening-rule nulls inside windows), from data/interim."""
+    c = _zero_config(sport)
+    p = pd.read_parquet(f"data/interim/{sport}.parquet")
+    n1 = null_reporting_zeros(p, c["zero_attendance_windows"])[1]
+    n_all = null_reporting_zeros(p, c["zero_attendance_windows"], c["treated_seasons"],
+                                 c["fans_from"], c["reclosures"])[1]
+    return n1, n_all - n1
 
 
-def zero_attendance_sensitivity(pre_dir: Path | None = None) -> pd.DataFrame:
-    """Frozen 6a pooled estimates before vs after nulling ESPN zero-attendance reporting
-    artifacts (spec 2026-09-15). Data correction only; the specification is unchanged."""
-    pre_dir = pre_dir if pre_dir is not None else TABLES / "pre_zero_fix"
+def _fix_sensitivity(pre_dir: Path, post_dir: Path, which: int, out_name: str) -> pd.DataFrame:
     keep = ["sport", "outcome", "coef", "se", "ci_low", "ci_high", "n_obs"]
     rows = []
     for s in SPORTS:
         pre = pd.read_csv(pre_dir / f"twfe_{s}.csv")
-        post = pd.read_csv(TABLES / f"twfe_{s}.csv")
+        post = pd.read_csv(post_dir / f"twfe_{s}.csv")
         pre, post = (d[d["sample"] == "pooled"][keep] for d in (pre, post))
         m = pre.merge(post, on=["sport", "outcome"], suffixes=("_pre", "_post"))
-        m["n_nulled"] = _n_nulled(s)
+        m["n_nulled"] = _n_nulled(s)[which]
         rows.append(m)
     out = pd.concat(rows, ignore_index=True)
     TABLES.mkdir(parents=True, exist_ok=True)
-    out.to_csv(TABLES / "zero_attendance_sensitivity.csv", index=False)
+    out.to_csv(TABLES / out_name, index=False)
     return out
+
+
+def zero_attendance_sensitivity(pre_dir: Path | None = None, post_dir: Path | None = None) -> pd.DataFrame:
+    """Frozen 6a pooled estimates before vs after fix 1 (spec 2026-09-15). "After" is the state
+    archived before the reopening fix, so this table does not move when later fixes land."""
+    return _fix_sensitivity(pre_dir or TABLES / "pre_zero_fix", post_dir or TABLES / "pre_reopen_fix",
+                            0, "zero_attendance_sensitivity.csv")
+
+
+def reopen_zero_sensitivity(pre_dir: Path | None = None) -> pd.DataFrame:
+    """Frozen 6a pooled estimates before vs after the reopening rule (spec 2026-09-16)."""
+    return _fix_sensitivity(pre_dir or TABLES / "pre_reopen_fix", TABLES, 1,
+                            "reopen_zero_sensitivity.csv")
 
 
 def main() -> None:
@@ -629,6 +645,7 @@ def main() -> None:
     seasons = season_effects(panels)
     floor = noise_floor(panels)
     zero_fix = zero_attendance_sensitivity()
+    reopen_fix = reopen_zero_sensitivity()
 
     print("\n=== pooled cross-sport (win%, LPM) ===")
     print(meta[meta["scope"] != "input"][
@@ -660,6 +677,8 @@ def main() -> None:
           "home advantage stays undetectable no matter how many seasons are added.")
     print("\n=== zero-attendance data correction: 6a pooled, pre vs post ===")
     print(zero_fix.to_string(index=False))
+    print("\n=== reopening-rule zero correction: 6a pooled, pre vs post ===")
+    print(reopen_fix.to_string(index=False))
 
 
 if __name__ == "__main__":

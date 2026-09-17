@@ -316,7 +316,25 @@ def test_zero_attendance_sensitivity_joins_pre_and_post(tmp_path, monkeypatch):
     pd.DataFrame([row(-0.017, 12818)], columns=cols).to_csv(post / "twfe_mlb.csv", index=False)
     monkeypatch.setattr(S, "TABLES", post)
     monkeypatch.setattr(S, "SPORTS", ["mlb"])
-    monkeypatch.setattr(S, "_n_nulled", lambda sport: 75)
-    out = S.zero_attendance_sensitivity(pre_dir=pre)
+    monkeypatch.setattr(S, "_n_nulled", lambda sport: (75, 0))
+    out = S.zero_attendance_sensitivity(pre_dir=pre, post_dir=post)
     r = out.iloc[0]
     assert (r.coef_pre, r.coef_post, r.n_obs_pre, r.n_obs_post, r.n_nulled) == (-0.019, -0.017, 12893, 12818, 75)
+
+
+def test_reopen_zero_sensitivity_uses_second_count(tmp_path, monkeypatch):
+    import pandas as pd
+    import src.models.sensitivity as S
+    pre, post = tmp_path / "pre", tmp_path / "post"
+    pre.mkdir(); post.mkdir()
+    cols = ["sport", "outcome", "sample", "coef", "se", "ci_low", "ci_high", "n_obs"]
+    for s in S.SPORTS:
+        pd.DataFrame([[s, "home_win", "pooled", 0.01, 0.02, -0.03, 0.05, 1000]], columns=cols).to_csv(
+            pre / f"twfe_{s}.csv", index=False)
+        pd.DataFrame([[s, "home_win", "pooled", 0.00, 0.02, -0.04, 0.04, 990]], columns=cols).to_csv(
+            post / f"twfe_{s}.csv", index=False)
+    monkeypatch.setattr(S, "TABLES", post)
+    monkeypatch.setattr(S, "_n_nulled", lambda sport: (7, 10))
+    out = S.reopen_zero_sensitivity(pre_dir=pre)
+    assert (out["n_nulled"] == 10).all() and (out["n_obs_post"] == 990).all()
+    assert (post / "reopen_zero_sensitivity.csv").exists()

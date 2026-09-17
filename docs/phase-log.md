@@ -22,8 +22,12 @@ design spec is not a build script; do not plan the whole project at once.
 | 7 — pre-write-up consolidation | 2026-07-28 | `src/models/sensitivity.py` (5 prose-only numbers → 5 CSVs), `docs/literature-review.md`, `paper/references.bib` (12 entries), `summarize(playoffs=)`, palette + marker work. |
 | Pre-write-up audit | 2026-08-17 | 4 more tables: `dose_overlap`, `leave_one_season_out`, `season_effects`, `noise_floor`. |
 | Zero-attendance fix | 2026-09-15 | Inserted mid Phase 8 (B.G2→B.G3). `zero_attendance_windows` in config; `build.null_reporting_zeros` nulls `crowd_pct` for 119 ESPN zero-attendance artifacts; `crowd_pct` nullable; `walk_scoreboard` dedupe + `validate()` unique `game_id` removed 23 duplicate MLB rows (panel 30,146); original tables in `results/tables/pre_dedup/`; `sensitivity.zero_attendance_sensitivity` → `zero_attendance_sensitivity.csv` (22 CSVs); pre-fix tables archived in `results/tables/pre_zero_fix/`. 170 tests. Headline win% nfl +0.044 · nba +0.016 · nhl +0.007 · mlb −0.021. |
+| Reopening-zeros fix | 2026-09-16/17 | Inserted mid Phase 8 (B.G5, between fix round 1 and fix round 2). Fix 1's zero rule only covered zeros *outside* a restriction window; this closes the gap for zeros *inside* one that fall after a team had already readmitted fans. `config/sports.yaml` gains `fans_from`/`reclosures` per sport, sourced from an exhaustive 44-team audit (`.superpowers/sdd/reopening-zeros-fix/team_audit.csv`, 20 `no_fans` / 15 `data_only` / 9 `fans_from`, zero unverified); `build.null_reporting_zeros` extended (`fans_from=`, `reclosures=` params); `sensitivity.reopen_zero_sensitivity` → `reopen_zero_sensitivity.csv`; pre-fix tables archived in `results/tables/pre_reopen_fix/`; baseline hashes refreshed (old at `.superpowers/sdd/phase8-polish/baseline/tables.pre_reopen_fix.sha256`). 179 tests. 172 games newly nulled (nfl 6 · mlb 0 · nba 77 · nhl 89). Headline win% nfl +0.044→**+0.050** · nba +0.016→**+0.006** · nhl +0.007→**+0.011** · mlb −0.021 (unchanged). Not outcome-blind (surfaced via a Ganz & Allsop literature comparison, not the audit); disclosed as such, with both the scratch and final numbers shipped side by side. Full detail: `docs/results.md` "Reopening-zeros correction", `docs/data-pipeline.md` "Reopening zeros", `docs/design-decisions.md` "Reopening-zeros rule". |
 
-**⬅ Next: Phase 8 — Quarto write-up → PDF + HTML.** See `docs/paper-writing-guide.md`.
+**⬅ Next: Phase 8 stage B.G5 resumes at fix round 2** (N1 — the Ganz & Allsop presence-mapping
+sentence, reworded against the new tables; M5 — the NHL within-2021 margin game-clustered CI,
+which now excludes zero with the wrong sign), then the G5 gate. B.G6+ only on user say-so. See
+`docs/paper-writing-guide.md`.
 
 ## Phase 7 extras worth knowing
 
@@ -58,6 +62,31 @@ contrast test (**the earlier `for`-loop test short-circuited at nba and hid a se
 a CVD floor regression guard over all 6 pairs; and a cross-module equality test guarding both
 `SPORT_COLORS` and `MARKERS`. `_delta_e_cvd`'s Machado-2009 matrices are copied verbatim from the
 dataviz skill's bundled validator — the skill lives outside the repo, so they stay in lockstep by hand.
+
+## Phase 8 stage B — claim audit (in progress)
+
+Every top-level section gets an independent claim audit (opus), a controller triage that
+re-verifies each load-bearing number from the current CSVs, one batched user escalation, a fixer,
+and a fresh-agent verifier. Closed so far: **G1** (front/intro), **G2** (data/descriptive/
+strategy), **G3** (`sec-results`, 15 fixes), **G4** (`sec-leagues`, 12 fixes + a 5-finding fix
+round). What it is actually catching, across ~150 audited claims:
+
+- **Invented multipliers.** "0.14–0.76×" (true 0.44–0.77, imported from a different sensitivity),
+  "roughly fifty times" (true 38), "four times larger" (true 12.5). None reproduced from any
+  artifact; all three read plausibly in context.
+- **Comparisons that are backwards.** NFL `sd_true` 1.73 described as "larger than" its own 1.75
+  HFA; the same sentence had propagated into `docs/results.md` and `src/models/sensitivity.py`.
+- **Counts that disagree with their own table.** "the same count as @tbl-mde" (7 vs 8), "three of
+  them need their own discussion" above four subsections, "we report all three definitions" where
+  only one estimated definition exists.
+- **Unbounded superlatives.** "largest … anywhere in the study" was falsifiable from CSV rows no
+  table prints — twice in one section.
+- **Facts true of three leagues stated as common to four.** "the same compressed schedules" (the
+  NFL played 256 games in 2018, 2019 and 2020).
+
+Discipline that made it work: the CSVs are authoritative, the controller re-derives every
+load-bearing number before escalating, and fixes are wired as live expressions rather than typed.
+Captions are the one place that cannot be — see `docs/agent-pitfalls.md`.
 
 ## Deferred minors (non-blocking, logged in the phase ledgers)
 

@@ -2,16 +2,17 @@
 
 Workstream B of the pre-write-up consolidation phase (Phase 7). Written 2026-07-27.
 Sections 1–5 below are structured so Phase 8 can lift them into the paper directly.
+Numbers refreshed 2026-09-17 against `results/tables/*.csv` post the reopening-zeros fix.
 
 **The result being positioned.** Four sports, TWFE pooled, win-probability LPM
 (`results/tables/twfe_cross_sport.csv`):
 
 | sport | crowd coef (Δ win prob) | SE | 95% CI |
 |---|---|---|---|
-| nfl | +0.0441 | 0.0370 | [−0.0285, +0.1166] |
+| nfl | +0.0501 | 0.0378 | [−0.0241, +0.1242] |
 | mlb | −0.0208 | 0.0156 | [−0.0513, +0.0097] |
-| nba | +0.0157 | 0.0257 | [−0.0346, +0.0661] |
-| nhl | +0.0067 | 0.0234 | [−0.0393, +0.0526] |
+| nba | +0.0064 | 0.0268 | [−0.0461, +0.0589] |
+| nhl | +0.0107 | 0.0253 | [−0.0389, +0.0603] |
 
 Every interval crosses zero. The published ghost-game literature points, on balance,
 the other way. **Section 3 is the section that matters**: where a published effect exists
@@ -175,7 +176,7 @@ Read at face value, our raw NBA before/after drop (1.34 points) is about **79%**
 published causal estimate (1.69 points), and our full-crowd baseline (2.26) is slightly
 *larger* than theirs (2.13). Our descriptive data are therefore **not** in conflict with
 Ganz & Allsop. What differs is the **modelled** number: our TWFE NBA margin coefficient is
-**+1.07 (SE 0.89)**, and its 95% CI **[−0.68, +2.83] contains 1.69**. The controls (Elo,
+**+0.91 (SE 0.96)**, and its 95% CI **[−0.98, +2.80] contains 1.69**. The controls (Elo,
 rest, travel) and team fixed effects absorb part of the raw drop, and what is left is
 estimated too imprecisely to separate from either zero or the published effect.
 
@@ -196,10 +197,10 @@ Minimum detectable effect at 80% power, two-sided α = .05, is `MDE ≈ 2.8 × S
 
 | sport | our pooled win% coef | SE | MDE at 80% power | prior effect size, same unit | can we detect theirs? |
 |---|---|---|---|---|---|
-| nfl | +0.0441 | 0.0370 | **10.35 pp** | `higgs2021nba` reports little-to-no NFL change, confounded by a pre-existing downward trend (it notes home advantage was *lower* in 2019 than in the COVID-adjusted 2020 season); log-scale, not convertible to pp | no convertible published effect to test against; 10.4 pp is 2× total NFL HFA |
+| nfl | +0.0501 | 0.0378 | **10.59 pp** | `higgs2021nba` reports little-to-no NFL change, confounded by a pre-existing downward trend (it notes home advantage was *lower* in 2019 than in the COVID-adjusted 2020 season); log-scale, not convertible to pp | no convertible published effect to test against; 10.6 pp is 2× total NFL HFA |
 | mlb | −0.0208 | 0.0156 | **4.37 pp** | `higgs2021nba` reports **no meaningful MLB change** | our null agrees with the only comparable published result |
-| nba | +0.0157 | 0.0257 | **7.19 pp** | `ganz2024nbafans` 1.69 pts → **≈ 4.65 pp** (conversion below) | **No.** MDE is 1.5× their effect; our CI [−3.5, +6.6] pp contains 4.65 pp |
-| nhl | +0.0067 | 0.0234 | **6.56 pp** | `plosone_nhl_penalties` reports **no outcome effect at all** (see §4) | no outcome effect published to compare against |
+| nba | +0.0064 | 0.0268 | **7.50 pp** | `ganz2024nbafans` 1.69 pts → **≈ 4.65 pp** (conversion below) | **No.** MDE is 1.6× their effect; our CI [−4.61, +5.89] pp contains 4.65 pp |
+| nhl | +0.0107 | 0.0253 | **7.08 pp** | `plosone_nhl_penalties` reports **no outcome effect at all** (see §4) | no outcome effect published to compare against |
 
 **Margin-to-win-probability conversion, and its warrant.** For NBA we approximate game
 margin as Normal with mean μ and the empirically measured within-sport dispersion, so
@@ -217,12 +218,12 @@ win-probability translation, so it too is left unconverted.
 
 | sport | our pooled margin coef | SE | MDE at 80% power | our **total** measured HFA (pooled full-crowd) | MDE as multiple of total HFA |
 |---|---|---|---|---|---|
-| nfl | +1.705 | 1.147 | **3.21 pts** | 1.754 pts | **1.83×** |
+| nfl | +1.928 | 1.165 | **3.26 pts** | 1.754 pts | **1.86×** |
 | mlb | −0.180 | 0.160 | **0.449 runs** | 0.044 runs | **10.15×** |
-| nba | +1.073 | 0.895 | **2.51 pts** | 2.261 pts | **1.11×** |
-| nhl | +0.003 | 0.120 | **0.337 goals** | 0.254 goals | **1.33×** |
+| nba | +0.907 | 0.964 | **2.70 pts** | 2.261 pts | **1.19×** |
+| nhl | +0.039 | 0.131 | **0.366 goals** | 0.254 goals | **1.44×** |
 
-And on the win-probability side: nfl 1.99× · mlb 1.53× · nba 1.02× · nhl 1.71×.
+And on the win-probability side: nfl 2.04× · mlb 1.53× · nba 1.06× · nhl 1.85×.
 
 **Denominators, so the ratios are reproducible.** "Total measured HFA" is the
 `pooled_fullcrowd` row of `results/tables/descriptive_hfa.csv` for that sport: for the margin
@@ -232,18 +233,18 @@ outcome it is `mean_home_margin` directly; for the win-probability outcome it is
 
 > **In all eight sport × outcome cells, the minimum effect this study could reliably detect is
 > larger than the entire home advantage that exists in that sport — the smallest margin (NBA win
-> probability) by 2%.** At per-unit scaling, a crowd effect accounting for **100% of home-field
+> probability) by 6%.** At per-unit scaling, a crowd effect accounting for **100% of home-field
 > advantage** would sit at or beyond the 80%-power detection threshold in every cell — but the
 > rescaling caveat immediately below moves three of them to ≈1.0 or below (one strictly inside
 > the threshold, two sitting on it).
 
 Two reasons the claim is stated with its basis rather than as a clean sweep. First, the narrowest
-cell — NBA win% at **1.02×** — clears one by 2%, well inside the precision of these estimates.
+cell — NBA win% at **1.06×** — clears one by 6%, well inside the precision of these estimates.
 
 Second, and more seriously: **the coefficient is scaled per unit of `crowd_pct`, and no sport's
 data spans a full unit.** Measured on the exclusion-filtered estimation panel, control-season mean
 `crowd_pct` is nfl **.97** · mlb **.65** · nba **.92** · nhl **.92**, against treated-season means
-of .064 · **.320** · .073 · .062. MLB is the outlier in both columns: under this study's Option-A
+of .069 · **.322** · .080 · .069. MLB is the outlier in both columns: under this study's Option-A
 empirical-capacity definition, announced MLB attendance never approaches the stadium-season
 maximum, so a normal MLB season averages .63–.67 dose and only 17% of its games exceed 0.9.
 Rescaling each MDE to its own sport's realised contrast (a crowd effect explaining 100% of HFA
@@ -251,13 +252,13 @@ implies β = HFA ÷ control-crowd level) gives:
 
 | rescaled MDE ÷ total HFA | margin | win% |
 |---|---|---|
-| nfl | 1.78× | 1.94× |
+| nfl | 1.81× | 1.98× |
 | mlb | 6.64× | **1.00×** |
-| nba | **1.02×** | **0.94×** |
-| nhl | 1.22× | 1.58× |
+| nba | **1.10×** | **0.98×** |
+| nhl | 1.33× | 1.70× |
 
-**Three cells land at ≈1.0 or below** — nba win% 0.94, mlb win% 1.00, nba margin 1.02 — and nhl
-margin falls 1.33 → 1.22. The all-eight statement is therefore correct **at per-unit scaling**
+**Three cells land at ≈1.0 or below** — nba win% 0.98, mlb win% 1.00, nba margin 1.10 — and nhl
+margin falls 1.44 → 1.33. The all-eight statement is therefore correct **at per-unit scaling**
 and is **not** robust to rescaling; five cells survive comfortably, three do not. Phase 8 must
 state which scaling the ratio uses and must not assert that the conclusion is unchanged by it.
 
@@ -280,7 +281,7 @@ with **team-clustered** standard errors over 30 clusters.
   size is demand-driven (good teams draw crowds *and* win) — the endogeneity the whole
   design exists to dodge. We paid for that identification choice in power. The NHL
   within-2021 dose regression documented in `CLAUDE.md` (coefficient wrong-signed,
-  p = .10–.13, fitted support 0–0.40) is exactly why we did not take that route.
+  p = .04–.11, fitted support 0–0.40) is exactly why we did not take that route.
 - **Clustering.** Our SEs cluster by home team (30–33 clusters). Several published studies
   use unclustered or match-level inference, which produces much smaller SEs for the same data.
 - **The football studies pool many leagues.** `leitner2021referees` has 1,286 matches across
@@ -339,7 +340,7 @@ detectably, for two reasons that both apply here:
 
 1. **The channel is small relative to outcome noise.** NHL total home advantage in our data
    is **0.254 goals per game** (SE 0.033) against a per-game margin SD of 2.56 goals. Our
-   NHL margin MDE is 0.323 goals — larger than the entire home advantage (§3b). A penalty
+   NHL margin MDE is 0.366 goals — larger than the entire home advantage (§3b). A penalty
    differential would have to be worth more than the whole of NHL HFA before our design
    could see it.
 2. **Penalties are one of several channels**, and the others (travel, familiarity, last
@@ -350,7 +351,7 @@ detectably, for two reasons that both apply here:
 > Our NHL outcome null is consistent with Guérette et al. (2021) at the level each study
 > measures. Their mechanism finding — that home-favouring penalty calls disappear without
 > a crowd — stands, and we do not test it. Our estimate is of the crowd's effect on the
-> *result*, where the minimum effect we could detect (0.32 goals) exceeds the entire NHL
+> *result*, where the minimum effect we could detect (0.37 goals) exceeds the entire NHL
 > home advantage (0.25 goals). We are unable to distinguish a zero crowd effect on results
 > from one large enough to account for all of NHL home advantage.
 
@@ -384,7 +385,7 @@ or find a source in which the league states the reason. Either way the **travel 
 justification survives**: a division-only 56-game schedule with all Canadian teams in one
 division mechanically changes the travel distribution in 2021, which is exactly what the
 diagnostic was built to check — and the diagnostic came back showing
-`corr(crowd_pct, away_travel_km | 2021) = −0.138`, i.e. weak.
+`corr(crowd_pct, away_travel_km | 2021) = −0.143`, i.e. weak.
 
 ### 5.2 Toronto and Edmonton played bubble games in their own arenas — **VERIFIED**
 
@@ -431,7 +432,7 @@ piece of hedging required is on the *rationale* for the North Division in §5.1.
    less precise.
 3. **Power dominates what can be concluded.** At **per-unit `crowd_pct` scaling**, in seven of
    eight sport × outcome cells our MDE at 80% power exceeds the total home advantage in that
-   sport, and in the eighth it equals it. Rescaled to each sport's realised crowd contrast three
+   sport, and in the eighth it exceeds it narrowly (6%). Rescaled to each sport's realised crowd contrast three
    cells fall to ≈1.0 or below, so **state the scaling basis whenever this claim is used** and do
    not assert it is unaffected by the choice (§3b). Where a published effect exists in a
    convertible unit — NBA only — our interval

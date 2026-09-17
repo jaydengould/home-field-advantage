@@ -6,7 +6,7 @@ the COVID empty/partial-stadium period (full 2020–21 restriction window) as a 
 Modeled outcome is scoring margin; win % reported alongside as the intuitive number. Each sport
 analyzed separately, then combined. Final output: a Quarto write-up (PDF + HTML).
 
-Python 3.11+ in `.venv`. Quarto is the system CLI, not the pip package. `pytest` (170 tests).
+Python 3.11+ in `.venv`. Quarto is the system CLI, not the pip package. `pytest` (179 tests).
 
 ## Documentation map
 
@@ -40,8 +40,10 @@ Read a file when the work needs it — don't preload.
 ## Project-specific facts that are easy to get wrong
 
 - **`crowd_pct == 0` is a REAL value inside a restriction window** (empty stadium), never coerce it
-  to null. ESPN zeros *outside* `config/sports.yaml` `zero_attendance_windows` are reporting
-  artifacts and are null `crowd_pct` in `data/processed` (`build.null_reporting_zeros`).
+  to null — **and only until that team first readmitted fans** (config `fans_from`/`reclosures`).
+  ESPN zeros *outside* `config/sports.yaml` `zero_attendance_windows`, or *inside* one but on/after
+  a team's `fans_from` date with no covering `reclosures` entry, are reporting artifacts and are
+  null `crowd_pct` in `data/processed` (`build.null_reporting_zeros`).
 - **`capacity` is empirical, not seated** — each venue-season's max *announced* attendance.
   ESPN's `venue.capacity` is always `None` and announced attendance exceeds seated capacity.
 - **`treated_seasons` differs per sport** (nfl 2020 · mlb 2020–21 · nba 2021 · nhl 2021) and lives
@@ -77,7 +79,7 @@ longer belongs in a `docs/` file with a row in the map above.
 
 ## Status
 
-**Phases 1–7 complete, plus NHL as a fourth sport and a pre-write-up audit.** 170/170 tests. All
+**Phases 1–7 complete, plus NHL as a fourth sport and a pre-write-up audit.** 179/179 tests. All
 four loaders build validated panels; features populate `data/processed/`; descriptive HFA is
 quantified with a sanity gate; 6a (TWFE dose-response) and 6b (on/off before-after) both estimate
 the crowd effect per sport; 22 CSVs in `results/tables/` cover every number the paper cites; the
@@ -86,19 +88,39 @@ literature positioning and `paper/references.bib` exist. Uncommitted, awaiting h
 **⬅ IN PROGRESS — Phase 8 polish (stages A–E).** First draft done (`paper/draft/hfa-draft.qmd`, frozen);
 working copy `paper/hfa.qmd` (gitignored). Resume from the ledger's "RESUME HERE" block:
 `.superpowers/sdd/phase8-polish/progress.md`. Spec/plan: `docs/superpowers/{specs,plans}/2026-09-14-phase8-paper-polish*`.
-B.G1 and B.G2 done. **Zero-attendance data fix done** (2026-09-15, `docs/superpowers/{specs,plans}/2026-09-15-zero-attendance-fix*`;
-119 ESPN zero artifacts → null dose; 23 duplicate MLB rows removed; originals in `results/tables/pre_dedup/`). **Next: Stage B.G3**
-against the regenerated tables — see the ledger's RESUME HERE block.
+B.G1–B.G4 done. **Zero-attendance data fix done** (2026-09-15, `docs/superpowers/{specs,plans}/2026-09-15-zero-attendance-fix*`;
+119 ESPN zero artifacts → null dose; 23 duplicate MLB rows removed; originals in `results/tables/pre_dedup/`).
+**B.G5 fix round 1** applied and re-reviewed, incl. a Ganz & Allsop primary-source correction; that
+review's finding N1 exposed a second data bug — ESPN zeros after teams readmitted fans, including
+teams reporting 0 all season — so G5 paused for it. **Reopening-zeros fix complete**
+(2026-09-16/17, `docs/superpowers/{specs,plans}/2026-09-16-reopening-zeros-fix*`; spec §2 amended:
+fans = public spectators, ticketed or invited; 44-team audit, zero unverified; docs updated in both
+ledgers). **B.G5 resumes at fix round 2**, which owes two things against the new tables: **N1**
+(the Ganz & Allsop presence-mapping sentence, reworded) and a routed **M5** (the NHL within-2021
+margin game-clustered CI now excludes zero with the wrong sign, [−3.20, −0.086], p=.039, in
+`within_season_dose.csv`) — then the G5 gate. B.G6 only on user say-so.
+
+**⬅ NEXT SESSION STARTS WITH A REPO-WIDE DOCS NUMBER SWEEP**, before B.G5. Verify every number in
+every markdown file against `results/tables/*.csv` (principle 3: the CSV wins, the prose is stale).
+Three consecutive review passes each found stale numbers in a *different* markdown file that never
+had a review seat — `docs/literature-review.md`, `docs/design-decisions.md`, `docs/paper-writing-guide.md`
+— because no docs file has a number gate, only the paper does. `README.md` has never been checked
+this phase. Known-open items, traps and scope: `.superpowers/sdd/reopening-zeros-fix/progress.md`
+"RESUME HERE" (end of file). Two of them are load-bearing: a banner in `literature-review.md:5`
+falsely certifies that file as CSV-verified, and `design-decisions.md:164` claims every zero-bearing
+team "was sourced" (false — 15 of 44 audit rows are data-derived) as its justification that the
+post-hoc correction is not a forking path.
 
 **Phase 8: Quarto write-up → PDF + HTML.** Every *estimator* the paper needs exists.
 **Two tables must be computed inline** (neither has a CSV): the descriptive playoff-HFA table via
 `summarize(panel, playoffs=True)`, and the NBA bubble decomposition + seeding placebo. Read
 `docs/paper-writing-guide.md` first — the audit changed Phase 8's framing, not its estimates.
 
-**Headline (pooled win-probability LPM):** nfl **+0.044** · nba **+0.016** · nhl **+0.007** ·
-mlb **−0.021**. Every per-sport CI crosses zero. But the finding is a **ceiling, not a null**: in
-all eight sport × outcome cells the per-unit effect detectable at 80% power exceeds that sport's
-entire home advantage (three fall to ≈1 or below once rescaled). Full statement and its caveats: `docs/results.md`.
+**Headline (pooled win-probability LPM):** nfl **+0.050** · nba **+0.006** · nhl **+0.011** ·
+mlb **−0.021** (post reopening-zeros fix, 2026-09-16; was +0.044/+0.016/+0.007/−0.021). Every
+per-sport CI crosses zero. But the finding is a **ceiling, not a null**: in all eight sport ×
+outcome cells the per-unit effect detectable at 80% power exceeds that sport's entire home
+advantage (three fall to ≈1 or below once rescaled). Full statement and its caveats: `docs/results.md`.
 
 **After the write-up:** delete the ESPN caches (`data/raw/*/espn`, ~23GB) once the parquets are
 verified — gitignored and local-only, so only do this near project end to avoid re-pull risk.

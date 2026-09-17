@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pandas as pd
 import yaml
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "sports.yaml"
@@ -45,3 +46,14 @@ def test_every_sport_has_zero_attendance_windows():
         for win in w:
             assert ("seasons" in win) != ("start" in win)
             assert set(win) <= {"seasons", "start", "end", "home_teams"}
+
+
+def test_reopening_config_keys_present_and_well_formed():
+    cfg = yaml.safe_load(Path("config/sports.yaml").read_text())
+    for sport in ("nfl", "mlb", "nba", "nhl"):
+        c = cfg[sport]
+        for f in c["fans_from"]:
+            assert f["season"] in c["treated_seasons"] and f["source"].startswith("http")
+            pd.Timestamp(f["date"])
+        for r in c["reclosures"]:
+            assert pd.Timestamp(r["start"]) <= pd.Timestamp(r["end"]) and r["source"].startswith("http")

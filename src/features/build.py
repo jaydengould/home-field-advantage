@@ -90,14 +90,19 @@ def _elo_params(sport: str) -> dict:
     return yaml.safe_load(CONFIG_FILE.read_text())[sport]["elo"]
 
 
-def _zero_windows(sport: str) -> list[dict]:
-    return yaml.safe_load(CONFIG_FILE.read_text())[sport]["zero_attendance_windows"]
+def _zero_config(sport: str) -> dict:
+    return yaml.safe_load(CONFIG_FILE.read_text())[sport]
 
 
-def null_reporting_zeros(panel: pd.DataFrame, windows: list[dict]) -> tuple[pd.DataFrame, int]:
+def null_reporting_zeros(panel: pd.DataFrame, windows: list[dict], treated_seasons=(),
+                         fans_from=(), reclosures=()) -> tuple[pd.DataFrame, int]:
     """attendance==0 is a real empty stadium only inside a documented restriction window
     (config zero_attendance_windows). Outside every window it is an ESPN reporting artifact:
-    crowd_pct -> null (dose unknown). attendance keeps the as-reported 0. Sport-blind."""
+    crowd_pct -> null (dose unknown). attendance keeps the as-reported 0. Sport-blind.
+
+    Reopening rule (spec 2026-09-16): in treated-season games no model excludes, a zero on or
+    after the home team's first game with fans -- the earlier of its first non-zero attendance
+    and a sourced `fans_from` date -- is also an artifact, unless a sourced re-closure covers it."""
     df = panel.copy()
     day = pd.to_datetime(df["date"]).dt.normalize()
     real = pd.Series(False, index=df.index)
@@ -110,7 +115,23 @@ def null_reporting_zeros(panel: pd.DataFrame, windows: list[dict]) -> tuple[pd.D
         if "home_teams" in w:
             m &= df["home_team"].isin(w["home_teams"])
         real |= m
-    artifact = (df["attendance"] == 0) & ~real
+
+    reopened = pd.Series(False, index=df.index)
+    if len(treated_seasons):
+        audited = (df["season"].isin(treated_seasons) & ~df["is_playoff"] & ~df["is_bubble"]
+                   & ~df["neutral_site"] & ~df["relocated_home"])
+        first = day.where(audited & (df["attendance"] > 0)).groupby(
+            [df["season"], df["home_team"]]).transform("min")
+        for f in fans_from:
+            d = pd.Timestamp(f["date"])
+            m = (df["season"] == f["season"]) & (df["home_team"] == f["team"])
+            first = first.where(~m | (first <= d), d)          # NaT <= d is False -> d
+        reopened = audited & (day >= first)                    # NaT -> False
+        for r in reclosures:
+            reopened &= ~((df["home_team"] == r["team"]) & (day >= pd.Timestamp(r["start"]))
+                          & (day <= pd.Timestamp(r["end"])))
+
+    artifact = (df["attendance"] == 0) & (~real | reopened)
     df.loc[artifact, "crowd_pct"] = np.nan
     return df, int(artifact.sum())
 
@@ -167,7 +188,9 @@ def elo_accuracy(panel: pd.DataFrame, hfa: float) -> tuple[float, float]:
 
 def build(sport: str) -> pd.DataFrame:
     panel = pd.read_parquet(INTERIM / f"{sport}.parquet")
-    panel, n_null = null_reporting_zeros(panel, _zero_windows(sport))
+    c = _zero_config(sport)
+    panel, n_null = null_reporting_zeros(panel, c["zero_attendance_windows"], c["treated_seasons"],
+                                         c["fans_from"], c["reclosures"])
     print(f"{sport}: nulled {n_null} reporting-artifact zero-attendance crowd_pct")
     panel = add_travel(panel, load_coords())
     panel = add_rest(panel)

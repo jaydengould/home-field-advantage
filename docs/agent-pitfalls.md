@@ -81,6 +81,36 @@ don't add it.
 - **A quick diagnostic undercounts when it drops only part of the artifact set.** The pre-spec
   MLB check dropped control-season zeros only and predicted ≤ .02 of margin movement; the real fix
   (which also nulled the MLB 2021 zeros) moved it .038.
+- **A residual diagnostic defined relative to a team's first non-zero game is blind to teams that
+  report zero all season.** Fix 1's zero-attendance residual (2026-09-15) counted only zeros
+  *after* a team's first non-zero home game, so a team whose ESPN attendance reads 0 for **every**
+  treated-season home game — 29 team-seasons across nfl/nba/nhl, including three of the four
+  NBA all-zero teams that actually hosted fans (IND, MIA, SAC — the fourth, OKC, is verified
+  `no_fans` all season) and two of NFL's four originally-flagged teams that, under the amended
+  fan definition, kept sourced `fans_from` entries (GB, PHI; DET and MIN were re-verdicted to
+  `no_fans`) — never appeared in it and was silently coded as a real empty stadium.
+  The reopening-zeros fix (2026-09-16) caught this by auditing "reports zero the whole season" as
+  its own category (`kind=all_zero` in `team_audit.csv`), generated from the data, not from the
+  residual. **Count all-zero-season entities separately from a diagnostic scoped to "after the
+  first X"; the two failure modes don't share a codepath.**
 - **Row-count checks cannot see duplicates.** The zero-fix verification asserted "30,169 rows before
   and after" and passed while 23 MLB rows were duplicates. For a game-level panel, assert a unique
   `game_id` (now in `validate()`) and check same start + teams + score, not just the length.
+- **Live `{python}` does not work in a `#| tbl-cap:` / `#| fig-cap:` chunk option** — it renders as
+  literal `{python} …` text in both HTML and PDF (render-tested twice, B.G4). Every number in every
+  caption in `paper/hfa.qmd` is therefore hardcoded, ledgered, and goes stale silently on any data
+  regeneration: `@tbl-mlbsplit`'s `n` was 12,893 against a CSV that said 12,871 after the MLB dedup,
+  and the drift check cannot catch it because a hardcoded caption number never drifts. After
+  regenerating `results/tables/`, re-check every caption number by hand.
+- **Bound every superlative to a named table.** "The largest positive win-probability estimate
+  anywhere in the study" was false twice in one section: `within_season_dose.csv` holds an NBA
+  win coefficient of +0.367 (4.4× the claim) and `season_effects.csv` an NFL deviation of +0.129,
+  neither of them printed, because the chunk that would show them filters to two sports. The same
+  bug sat in "the largest within-season magnitude anywhere in this study" (NBA margin is +4.44).
+  A superlative over *printed* results is checkable; one over "the study" must be checked against
+  every CSV, including the rows no table displays.
+- **A figure that reproduces from nothing recurs.** Three separate claims in this paper quoted a
+  multiplier no artifact produces: "0.14–0.76×" (imported from a different sensitivity, true range
+  0.44–0.77), "roughly fifty times" (true max 38), "four times larger" (true 12.5). Each survived
+  because the surrounding sentence was plausible. When a claim quotes a ratio, recompute the ratio
+  and name its numerator and denominator — do not check only that the direction is right.

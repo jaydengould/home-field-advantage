@@ -34,6 +34,14 @@ PERMANENT_DOME_VENUE_IDS = frozenset({"31"})
 # "teams" in the 2018-2023 window. Exclusion set (window is fixed) beats a 30-team
 # allowlist.
 ALLSTAR_ABBRS = frozenset({"AL", "NL"})
+# ponytail: the 2020 postseason was a neutral-site hub bubble from the Division
+# Series on (Dodger Stadium / Daikin Park / Globe Life Field / Petco Park); ESPN
+# flags only the LCS/WS (Oct 11+) neutral, not the DS (Oct 5-9). The Wild Card
+# round (Sep 29-Oct 2) really was played at the higher seed's park and keeps
+# ESPN's flag. Oct 3 sits in the gap between the last WC game and the first DS
+# game, so a UTC date offset can't misfile a game either direction.
+HUB_BUBBLE_SEASON = 2020
+HUB_BUBBLE_START = pd.Timestamp("2020-10-03")
 
 
 def _select_games(events: Iterable[dict]) -> list[dict]:
@@ -76,13 +84,18 @@ def _build_panel(games: list[dict], attendance: dict, capacity: dict,
     is_dome = df["venue_id"].astype(str).isin(PERMANENT_DOME_VENUE_IDS).to_numpy()
     relocated = ((df["home_abbr"] == "TOR") & (season == 2020)).to_numpy()
 
+    is_playoff = df["season_type"].eq(3)
+    date_col = pd.to_datetime(df["date"]).dt.tz_localize(None)
+    hub_bubble = (season.eq(HUB_BUBBLE_SEASON) & is_playoff & date_col.ge(HUB_BUBBLE_START)).to_numpy()
+    neutral_site = df["neutral_site"].to_numpy(dtype=bool) | hub_bubble
+
     nan = lambda: pd.Series(np.nan, index=df.index, dtype=float)
     panel = pd.DataFrame({
         "sport": "mlb",
         "game_id": "mlb_" + df["event_id"].astype(str),
         "season": season,
-        "date": pd.to_datetime(df["date"]).dt.tz_localize(None),
-        "is_playoff": df["season_type"].eq(3).to_numpy(dtype=bool),
+        "date": date_col,
+        "is_playoff": is_playoff.to_numpy(dtype=bool),
         "home_team": df["home_abbr"].astype(str),
         "away_team": df["away_abbr"].astype(str),
         "home_score": df["home_score"].astype(int),
@@ -104,7 +117,7 @@ def _build_panel(games: list[dict], attendance: dict, capacity: dict,
         "temp_f": nan(),                  # no MLB weather
         "wind_mph": nan(),
         "precip": nan(),
-        "neutral_site": df["neutral_site"].to_numpy(dtype=bool),
+        "neutral_site": neutral_site,
         "relocated_home": relocated,
         "is_bubble": False,               # NBA-only concept
     })

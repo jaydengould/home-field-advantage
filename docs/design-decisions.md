@@ -129,6 +129,41 @@ Recorded because sport selection must be defensible as outcome-blind — NHL was
 - **Where it lives:** `src/features/build.py` `null_reporting_zeros`, not the loaders. Re-running the
   NFL loader re-downloads schedules (network), and the rule is config data with no sport branching.
   `data/interim` stays as reported; `data/processed` carries the correction.
-- **Not fixed, disclosed:** zeros inside a window that fall after the team already hosted fans
-  (37 in the model sample). Tuning the window after seeing estimates would be post hoc.
+- **Not fixed here, disclosed:** zeros inside a window that fall after the team already hosted fans
+  (37 in the model sample). Superseded by the reopening-zeros rule below.
+
+## Reopening-zeros rule (2026-09-16)
+
+- **`fans_from` = min(data, source), not either alone.** The data date (a team's first non-zero
+  ESPN home game that season) is available for every team for free and needs no research, but it
+  inherits ESPN's own reporting errors — a genuine early fans game can still show `attendance==0`.
+  The sourced date can correct that, but only when a source exists and is more precise than the
+  data. Taking the earlier of the two, per team-season, gets the correction where it's sourced and
+  falls back to the data everywhere else, without ever guessing a date later than the evidence
+  (the "never round backward" rule): a source giving only a month is anchored to the panel's
+  earliest game that month, never assumed to cover an earlier one.
+- **A re-closure needs its own source; it is not "resume the earlier logic."** `fans_from` marks a
+  one-way door (a team doesn't un-readmit fans by default), so any zero after it is treated as an
+  artifact unless a specific, dated source says the building actually closed again for that game.
+  Symmetry would be wrong here: the prior (no more re-closures once fans return) matches what
+  actually happened in every audited case that lacked a re-closure source, and a documented
+  re-closure is exactly the kind of event that gets reported (arena press releases, beat-writer
+  coverage), so an absent source after a real search is evidence of absence, not just missing
+  data.
+- **Null, not impute, same as fix 1.** A nulled reporting-artifact zero has an unknown true dose —
+  imputing a plausible value (e.g. the team's typical dose that month) would manufacture a
+  precision the source doesn't support and could tilt the estimate either way while looking more
+  "complete." Nulling drops the game from 6a's listwise deletion only; 6b and every descriptive
+  table are dose-blind and unaffected.
+- **The rule was written after estimates were seen, and both versions ship.** The problem surfaced
+  through a literature comparison (Ganz & Allsop; Phase 8 stage B.G5, finding "N1"), not through an
+  outcome-blind audit. A scratch version of the rule was run and its estimates seen before this
+  spec existed, and the "who counts as fans" definition was then amended after the Task 1 source
+  review (public spectators, ticketed or invited; not team-affiliated or working staff). This is a
+  legitimate post-hoc correction rather than a forking path because the audit that followed was
+  **exhaustive and mechanical** — every zero-bearing team in every treated season was sourced,
+  regardless of which direction it moved that sport's estimate (it moved NBA toward zero and NHL
+  away from zero). Both the scratch numbers and the final numbers are reported side by side in
+  `results/tables/reopen_zero_sensitivity.csv`, so a reader can see exactly what looking at the
+  estimate first bought.
 

@@ -224,3 +224,68 @@ def test_helper_does_not_mutate_input():
     p = _zpanel([(2019, "2019-05-01", "BOS", 0, 0.0)])
     null_reporting_zeros(p, [])
     assert p["crowd_pct"].iloc[0] == 0.0
+
+
+def _rpanel(rows):
+    """Treated-season rows with the exclusion flags the reopening rule reads."""
+    df = pd.DataFrame(rows, columns=["season", "date", "home_team", "attendance", "crowd_pct"])
+    return df.assign(date=pd.to_datetime(df["date"], format="ISO8601"), is_playoff=False,
+                     is_bubble=False, neutral_site=False, relocated_home=False)
+
+
+W21 = [{"seasons": [2021]}]
+
+
+def test_reopening_zero_after_first_nonzero_game_is_nulled():
+    p = _rpanel([(2021, "2021-01-10", "CLE", 0, 0.0),      # before fans -> real
+                 (2021, "2021-01-20", "CLE", 500, 0.03),   # first fans (data)
+                 (2021, "2021-02-01", "CLE", 0, 0.0)])     # after -> artifact
+    out, n = null_reporting_zeros(p, W21, treated_seasons=[2021])
+    assert n == 1 and out["crowd_pct"].isna().tolist() == [False, False, True]
+
+
+def test_configured_fans_from_nulls_all_zero_team_from_that_date_inclusive():
+    p = _rpanel([(2021, "2021-01-20", "MIA", 0, 0.0),
+                 (2021, "2021-01-29", "MIA", 0, 0.0),
+                 (2021, "2021-02-05", "MIA", 0, 0.0)])
+    ff = [{"season": 2021, "team": "MIA", "date": "2021-01-29", "source": "x"}]
+    out, n = null_reporting_zeros(p, W21, [2021], ff)
+    assert n == 2 and out["crowd_pct"].isna().tolist() == [False, True, True]
+
+
+def test_earlier_of_data_and_configured_date_wins():
+    p = _rpanel([(2021, "2021-01-10", "IND", 0, 0.0),
+                 (2021, "2021-01-15", "IND", 0, 0.0),
+                 (2021, "2021-01-20", "IND", 900, 0.05)])
+    late = [{"season": 2021, "team": "IND", "date": "2021-01-30", "source": "x"}]
+    early = [{"season": 2021, "team": "IND", "date": "2021-01-15", "source": "x"}]
+    assert null_reporting_zeros(p, W21, [2021], late)[1] == 0      # data date 01-20 wins
+    assert null_reporting_zeros(p, W21, [2021], early)[1] == 1     # config date 01-15 wins
+
+
+def test_sourced_reclosure_keeps_zero_real():
+    p = _rpanel([(2020, "2020-10-01", "BAL", 7000, 0.1),
+                 (2020, "2020-12-08", "BAL", 0, 0.0),     # inside re-closure -> real
+                 (2020, "2021-01-03", "BAL", 0, 0.0)])    # outside -> artifact
+    rc = [{"team": "BAL", "start": "2020-11-20", "end": "2020-12-31", "source": "x"}]
+    out, n = null_reporting_zeros(p, [{"seasons": [2020]}], [2020], (), rc)
+    assert n == 1 and out["crowd_pct"].isna().tolist() == [False, False, True]
+
+
+def test_no_fans_team_and_untreated_season_and_excluded_rows_untouched():
+    p = _rpanel([(2021, "2021-02-01", "OKC", 0, 0.0),     # never fans -> real
+                 (2022, "2021-11-01", "TOR", 900, 0.05),  # untreated season, Canadian window
+                 (2022, "2022-01-05", "TOR", 0, 0.0)])
+    w = W21 + [{"start": "2021-12-16", "end": "2022-02-20", "home_teams": ["TOR"]}]
+    out, n = null_reporting_zeros(p, w, [2021])
+    assert n == 0
+    q = _rpanel([(2021, "2021-01-05", "LAL", 900, 0.05), (2021, "2021-01-09", "LAL", 0, 0.0)])
+    q.loc[1, "is_playoff"] = True
+    assert null_reporting_zeros(q, W21, [2021])[1] == 0
+
+
+def test_windows_only_call_matches_fix_one():
+    p = _rpanel([(2021, "2021-01-05", "CLE", 900, 0.05), (2021, "2021-01-09", "CLE", 0, 0.0),
+                 (2019, "2019-05-01", "BOS", 0, 0.0)])
+    out, n = null_reporting_zeros(p, W21)
+    assert n == 1 and out["crowd_pct"].isna().tolist() == [False, False, True]
