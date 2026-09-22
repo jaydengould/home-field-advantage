@@ -455,7 +455,7 @@ def season_effects(panels=None) -> pd.DataFrame:
     """Every season's deviation from trend, plus a randomization-inference p.
 
     This is the honest inference for a treatment that varies at the season level
-    (module docstring). Rather than trusting a game-clustered SE, ask directly:
+    (module docstring). Rather than trusting a team-clustered SE, ask directly:
     how unusual is the treated season among the seasons we observe? Each season
     in turn wears the treatment dummy; the real one either stands out or it does
     not.

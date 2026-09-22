@@ -50,12 +50,16 @@ sport, and a hardcoded check gave NBA a false PASS off a coincidental gap.
 
 (6a post reopening-zeros fix, 2026-09-16; 6b is unaffected — it never reads `crowd_pct`.)
 
-The two estimators agree in sign in 7 of 8 cells (NHL margin disagrees, +0.039 vs −0.008, both
-indistinguishable from zero) and differ in magnitude by 4.1%–268.3% on the other seven — 6b runs
-larger on both NBA cells (+47.3% margin, +268.3% win%) and smaller on both NFL cells (−16.2%
-margin, −4.1% win%), the direction expected from raw vs Elo/rest/travel-adjusted. Agreement is not
-corroboration of identification: both read the same between-season contrast and carry the same
-confound; 6b tracking 6a mostly says the controls aren't doing much work.
+**Units: 6a is per unit of `crowd_pct`; 6b is a level (HFA_full − HFA_reduced).** Compare 6b with
+6a × dose gap (`dose_overlap.csv` all_treated control_mean − treated_mean: nfl 0.907 · mlb 0.334 ·
+nba 0.843 · nhl 0.852). (Corrected 2026-09-21, B.S O-1: earlier text compared them unscaled, giving
+"4.1%–268.3%" and "6b smaller on both NFL cells, the direction expected from raw vs adjusted" — false.)
+They agree in sign in 7 of 8 cells (NHL margin disagrees, +0.039 per unit vs −0.008, both
+indistinguishable from zero). |6b| / |6a × gap| − 1 on the other seven: nfl margin −7.6%, win +5.7%;
+nhl win −34.7%; nba margin +74.8%, win +336.9%; mlb margin +90.2%, win +84.1% (range 5.7%–337%).
+Close only in the NFL. Agreement is not corroboration of identification: both read the same
+between-season contrast and carry the same confound; in the NFL 6b matching scaled 6a is consistent
+with the adjustments (controls, team FE, trend) doing little net work there. In the NBA and MLB the two are not interchangeable.
 
 **Three honesty corrections that survived review:**
 1. **There is NO within-season dose curve for ANY sport.** Within-2020 NFL dose↔margin
@@ -90,7 +94,7 @@ and NBA's +0.006. It cannot distinguish zero from an NFL-sized effect.
   sensitivity table (p=.12, CI still spans zero [−0.022, +0.190]). The shipped spec is still
   right: within-*normal*-season crowd variation is demand-driven (good teams draw crowds *and*
   win). The decomposition confirms it — within-2022 dose is **+0.056** while within-2021 (the
-  exogenous slice) is **−0.29**.
+  policy-driven slice, confounded with calendar time) is **−0.29**.
   (R², full-FE and within-2021 numbers post reopening-zeros fix, 2026-09-16; within-2022 is
   unaffected — 2022 is not a treated season.)
 
@@ -105,14 +109,17 @@ and NBA's +0.006. It cannot distinguish zero from an NFL-sized effect.
 
 (Post reopening-zeros fix, 2026-09-16 — n fell from 849 as 88 NHL 2021 games lost their dose.
 **The margin CI now excludes zero, wrong-signed** — it did not before (was [−3.099, +0.271],
-p=.100). This is a live open item for Phase 8 stage B.G5 fix round 2 (routed finding "M5"): how
-the paper's robustness narrative should phrase a game-clustered CI that flips from containing
-zero to excluding it with the wrong sign. Not yet resolved as of this write-up.)
+p=.100). Resolved in B.G5 fix round 2 (2026-09-18, "M5"): @sec-nhl now states the CI, notes it is the
+only one of eight within-season fits below .05, and does not read it as evidence; an assert breaks
+the wording if the CI stops excluding zero.)
 
-Largest within-season magnitudes anywhere in the study, pointing the wrong way. **Raw means go
-the other way** (NHL empty +0.156 vs with-fans +0.446; MLB raw +0.003 vs coef −0.435). **The
-raw-vs-team-FE sign opposition reproduces in BOTH NHL and MLB** — that is the endogeneity lesson
-reproducing across sports, not two anomalies.
+Wrong-signed, but NOT the largest within-season magnitudes: NFL (+5.30) and NBA (+5.55) margin fits are larger, with huge SEs. **NHL raw means go
+the other way** (empty +0.156 vs with-fans +0.446). **Only the NHL shows an instructive reversal**
+(corrected 2026-09-18, G6-32): MLB's raw margin gap is +0.003 runs, indistinguishable from zero, and
+its raw win means run the same direction as its coefficient; across all 8 `within_season_dose.csv`
+cells the raw-vs-FE opposition holds in 4 and fails in 4. One league on a calendar-confounded fit is
+an illustration of the endogeneity argument, not a reproduced finding — the paper demotes it from
+"durable contribution" accordingly.
 
 Two caveats always travel with it: (1) within-team fan access in 2021 is confounded with calendar
 time (reopening was progressive, so "more fans" ≈ "later in season"); (2) the fitted range is
@@ -139,7 +146,7 @@ all eight cells; the smallest ratio (NBA win%) is 1.06×.**
 
 ⚠️ **This is not robust to rescaling, and saying so is mandatory.** The coefficient is per unit
 `crowd_pct` and no sport's data spans a full unit. Control-season mean dose is nfl **.97** ·
-mlb **.65** · nba **.92** · nhl **.92** (treated: .064 / .320 / .073 / .062). Rescaling each MDE
+mlb **.65** · nba **.92** · nhl **.92** (treated: .065 / .320 / .079 / .069). Rescaling each MDE
 to its own sport's realised contrast:
 
 | rescaled MDE ÷ HFA | margin | win% |
@@ -208,7 +215,7 @@ Config: `config/sports.yaml` `fans_from`/`reclosures` per sport; helper:
 `src.features.build.null_reporting_zeros`.
 
 **Audit.** Every zero-bearing home team in every treated season of nfl 2020, nba 2021 and nhl 2021
-was sourced (mlb 2020 is a league-wide closed-door season, not audited; mlb 2021 zeros were already
+was audited with a logged source search (mlb 2020 is a league-wide closed-door season, not audited; mlb 2021 zeros were already
 null under fix 1) — 44 teams, **zero unverified**: 20 `no_fans` (real empty stadium all season),
 15 `data_only` (first non-zero game in the data is the only evidence, no independent source needed
 or found), 9 `fans_from` (a public source pins an earlier or confirming date: nfl GB/PHI, nba
@@ -237,7 +244,9 @@ scratch version of the rule was run and its estimates seen *before* the spec was
 family/staff/media/on-duty) after the Task 1 source review. Both the scratch and the final numbers
 ship in `reopen_zero_sensitivity.csv`. What keeps this from being a forking path: the audit is
 **exhaustive and mechanical** — every all-zero and late-zero team in every treated season was
-sourced whichever way the estimate moved (it moved NBA toward zero and NHL away from zero; both
+searched for a source whichever way the estimate moved — 29 of 44 verdicts rest on a public source,
+15 on the data alone (the team's first non-zero ESPN game, set by the rule with no discretion; 6 of
+those found no source either way) (it moved NBA toward zero and NHL away from zero; both
 ship as found).
 
 **Disclosed, not fixed:**
@@ -284,7 +293,7 @@ each *untreated* season dropped once:
 (Post reopening-zeros fix, 2026-09-16 — base shifts with the twfe headline; was margin
 +0.674/+2.359/+1.799/+1.730/+1.619/+1.705, win% +0.0072/+0.0643/+0.0564/+0.0407/+0.0388/+0.0441.)
 
-Dropping 2018 moves win% by −0.98 SE; no other season moves either outcome by more than 0.55 SE.
+Dropping 2018 moves win% by −0.98 SE; no other season moves either outcome by more than 0.58 SE (−2019 margin).
 mlb/nhl stable (largest 0.65 SE, MLB −2023 win%, unaffected by this fix); nba's largest is −0.66 SE.
 Read with both halves: **partly genuine fragility, partly the mechanical fact that dropping an
 endpoint of a 6-season panel tilts the linear trend.** It removes the basis for calling NFL
@@ -341,12 +350,14 @@ implied crowd effect is **negative**.
 > In all eight sport × outcome cells, the effect this design could detect at 80% power is larger
 > than the entire home-field advantage of that sport, the smallest (NBA win probability) by 6%.
 > (That ratio is **per unit `crowd_pct`**; rescaled to each sport's realised contrast, three cells
-> fall to ≈1.0 or below. Say which scaling you are quoting.) Four replications, each individually
-> underpowered, all centred near zero, none able to exclude a crowd effect of the size NFL's point
-> estimate implies. In the one sport where a published estimate converts to our units (**NBA**),
-> our interval contains it. A shared, unmeasured 2020–21 home-specific confound remains, and
+> fall to ≈1.0 or below. Say which scaling you are quoting.) Four estimates, each individually
+> underpowered and none distinguishable from zero — not the same as near zero: NFL's is ~96% of its
+> win-probability HFA per unit, and +0.013 without 2018. (The old "all centred near zero, none able
+> to exclude an NFL-sized effect" was false — MLB win's CI excludes it; corrected 2026-09-18, G6-23/24.) In the one sport where a published estimate can be mapped into our units (**NBA**),
+> it sits at the upper edge of our interval. A shared, unmeasured 2020–21 home-specific confound remains, and
 > **pooling does not reduce it.** The claim this study can defend is that it cannot distinguish
-> zero from a crowd effect accounting for all of HFA; it is *not* evidence that crowds don't matter.
+> zero from a crowd effect accounting for all of HFA under randomization inference (floor .167; the
+> team-clustered CIs exclude it for MLB and NBA win); it is *not* evidence that crowds don't matter.
 
 **This study was NOT pre-registered.** The internal pre-commitment discipline is not a public
 timestamp. Complete disclosure is what substitutes for it — say so plainly.

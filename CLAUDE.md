@@ -51,7 +51,7 @@ Read a file when the work needs it — don't preload.
 - **Exclusions from every model:** `neutral_site | relocated_home | is_bubble | is_playoff`, via
   the shared `twfe._exclusion_mask`.
 - **Main model is team FE + a linear `season_trend`, never two-way FE** — full season FE are
-  near-collinear with the treatment outside MLB (NFL/NBA signs invert, NHL inflates ~12×).
+  near-collinear with the treatment outside MLB (NFL/NBA signs invert, NHL inflates ~8×).
 - **Filter the bubble on `is_bubble`, never `neutral_site`** — 58 of 130 NHL bubble games are not
   flagged neutral.
 - **NFL's `closing_spread` is a post-treatment bad control**, not a main-model control.
@@ -90,26 +90,21 @@ working copy `paper/hfa.qmd` (gitignored). Resume from the ledger's "RESUME HERE
 `.superpowers/sdd/phase8-polish/progress.md`. Spec/plan: `docs/superpowers/{specs,plans}/2026-09-14-phase8-paper-polish*`.
 B.G1–B.G4 done. **Zero-attendance data fix done** (2026-09-15, `docs/superpowers/{specs,plans}/2026-09-15-zero-attendance-fix*`;
 119 ESPN zero artifacts → null dose; 23 duplicate MLB rows removed; originals in `results/tables/pre_dedup/`).
-**B.G5 fix round 1** applied and re-reviewed, incl. a Ganz & Allsop primary-source correction; that
-review's finding N1 exposed a second data bug — ESPN zeros after teams readmitted fans, including
-teams reporting 0 all season — so G5 paused for it. **Reopening-zeros fix complete**
-(2026-09-16/17, `docs/superpowers/{specs,plans}/2026-09-16-reopening-zeros-fix*`; spec §2 amended:
-fans = public spectators, ticketed or invited; 44-team audit, zero unverified; docs updated in both
-ledgers). **B.G5 resumes at fix round 2**, which owes two things against the new tables: **N1**
-(the Ganz & Allsop presence-mapping sentence, reworded) and a routed **M5** (the NHL within-2021
-margin game-clustered CI now excludes zero with the wrong sign, [−3.20, −0.086], p=.039, in
-`within_season_dose.csv`) — then the G5 gate. B.G6 only on user say-so.
-
-**⬅ NEXT SESSION STARTS WITH A REPO-WIDE DOCS NUMBER SWEEP**, before B.G5. Verify every number in
-every markdown file against `results/tables/*.csv` (principle 3: the CSV wins, the prose is stale).
-Three consecutive review passes each found stale numbers in a *different* markdown file that never
-had a review seat — `docs/literature-review.md`, `docs/design-decisions.md`, `docs/paper-writing-guide.md`
-— because no docs file has a number gate, only the paper does. `README.md` has never been checked
-this phase. Known-open items, traps and scope: `.superpowers/sdd/reopening-zeros-fix/progress.md`
-"RESUME HERE" (end of file). Two of them are load-bearing: a banner in `literature-review.md:5`
-falsely certifies that file as CSV-verified, and `design-decisions.md:164` claims every zero-bearing
-team "was sourced" (false — 15 of 44 audit rows are data-derived) as its justification that the
-post-hoc correction is not a forking path.
+**B.G5 complete (2026-09-18).** Round 1 incl. the Ganz & Allsop primary-source correction (Q9);
+its N1 exposed the reopening-zeros data bug, fixed 2026-09-16/17 (`docs/superpowers/{specs,plans}/2026-09-16-reopening-zeros-fix*`;
+44-team audit, zero unverified). Round 2: N1 (Ganz mapping +2.61, +2.42 counting nulled games as
+present, both assert-guarded at the upper edge) and M5 (NHL within-2021 team-clustered CI excludes
+zero, wrong sign, disclosed with assert). Re-review CLOSED; gate green. Docs number sweep also done
+2026-09-18 (43 fixes + Ganz framing). Docs have no number gate — re-sweep after any table regeneration.
+**B.G6 complete (2026-09-18)** — conclusion corrected to the body (NHL/MLB reversal demoted to a one-league
+illustration; "centred near zero" and "none able to exclude NFL-sized" removed). **B.S complete — Stage B CLOSED
+(2026-09-21):** sweeps + checklist; notable: (a)/(b) coherence now compares (b) with (a) × dose gap (was a units error),
+tbl-within shows all four leagues, NYI 2020–21 ESPN venue mislabel disclosed. **C1 complete (2026-09-21)** — all
+citations primary-verified; bib 12 → 18; Wikipedia gone; Gong → home bias; MLB officiating sentence rewritten
+(Saiegh & Wong 2026: umpire bias rises with occupancy, small). **C2 complete — Stage C CLOSED (2026-09-21):**
+bib 18 → 20 (Farnell 2023 NFL: crowds do NOT affect visiting false starts; McMahon & Quintanar 2024 NCAA); Saiegh
+added to sec-lit. **Next: Stage D0** (voice profile), on user say-so; start from the phase8 ledger's final
+"RESUME HERE" block (2026-09-21, post-C2).
 
 **Phase 8: Quarto write-up → PDF + HTML.** Every *estimator* the paper needs exists.
 **Two tables must be computed inline** (neither has a CSV): the descriptive playoff-HFA table via

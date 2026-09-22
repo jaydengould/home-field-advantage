@@ -39,7 +39,7 @@ re-litigate one, read the reasoning here first. Full original design:
 - **`covid_era` is a treated-season set, not a date window.** Reopening was
   per-team-per-week (state policy), so a per-sport date would be false precision;
   `crowd_pct` already carries the exact per-game dose. `covid_era`'s job is to mark which
-  crowd variation is **policy-driven (exogenous)** vs demand-driven (endogenous). It stays
+  crowd variation is **policy-driven** (not demand-driven, though confounded with calendar time; the paper no longer calls it exogenous, B.S E1) vs demand-driven (endogenous). It stays
   config-free in `validate()`; the *loader* sets it from `config/sports.yaml`.
 
 ## Features (Phase 4)
@@ -75,7 +75,7 @@ re-litigate one, read the reasoning here first. Full original design:
   ~a pure season-level treatment (`crowd_pct` ≈ .97 every normal season, ≈ .07 in the treated
   one), so full season FE are near-collinear with `crowd_pct` and absorb the between-season
   contrast that *is* the natural experiment. Two-way FE inverts NFL and NBA (NFL margin
-  −11.79 vs +1.71 with team FE only), inflates NHL win ~12×, and leaves MLB's sign intact (MLB
+  −10.92 vs +1.93 with team FE only), inflates NHL win ~8×, and leaves MLB's sign intact (MLB
   R² .64 is not near-collinear) — `season_fe_sensitivity.csv`. The linear trend nets out smooth drift without erasing
   the discrete COVID contrast.
 - **6b uses raw means, no controls** — that is the point (the intuitive number). "Does it
@@ -161,7 +161,9 @@ Recorded because sport selection must be defensible as outcome-blind — NHL was
   spec existed, and the "who counts as fans" definition was then amended after the Task 1 source
   review (public spectators, ticketed or invited; not team-affiliated or working staff). This is a
   legitimate post-hoc correction rather than a forking path because the audit that followed was
-  **exhaustive and mechanical** — every zero-bearing team in every treated season was sourced,
+  **exhaustive and mechanical** — every zero-bearing team in every treated season was searched for
+  a source (44 of 44, queries logged; 29 verdicts rest on a public source, 15 on the data alone —
+  the first non-zero ESPN game, which the rule sets with no discretion — and none left unverified),
   regardless of which direction it moved that sport's estimate (it moved NBA toward zero and NHL
   away from zero). Both the scratch numbers and the final numbers are reported side by side in
   `results/tables/reopen_zero_sensitivity.csv`, so a reader can see exactly what looking at the

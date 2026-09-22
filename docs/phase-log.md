@@ -23,11 +23,14 @@ design spec is not a build script; do not plan the whole project at once.
 | Pre-write-up audit | 2026-08-17 | 4 more tables: `dose_overlap`, `leave_one_season_out`, `season_effects`, `noise_floor`. |
 | Zero-attendance fix | 2026-09-15 | Inserted mid Phase 8 (B.G2→B.G3). `zero_attendance_windows` in config; `build.null_reporting_zeros` nulls `crowd_pct` for 119 ESPN zero-attendance artifacts; `crowd_pct` nullable; `walk_scoreboard` dedupe + `validate()` unique `game_id` removed 23 duplicate MLB rows (panel 30,146); original tables in `results/tables/pre_dedup/`; `sensitivity.zero_attendance_sensitivity` → `zero_attendance_sensitivity.csv` (22 CSVs); pre-fix tables archived in `results/tables/pre_zero_fix/`. 170 tests. Headline win% nfl +0.044 · nba +0.016 · nhl +0.007 · mlb −0.021. |
 | Reopening-zeros fix | 2026-09-16/17 | Inserted mid Phase 8 (B.G5, between fix round 1 and fix round 2). Fix 1's zero rule only covered zeros *outside* a restriction window; this closes the gap for zeros *inside* one that fall after a team had already readmitted fans. `config/sports.yaml` gains `fans_from`/`reclosures` per sport, sourced from an exhaustive 44-team audit (`.superpowers/sdd/reopening-zeros-fix/team_audit.csv`, 20 `no_fans` / 15 `data_only` / 9 `fans_from`, zero unverified); `build.null_reporting_zeros` extended (`fans_from=`, `reclosures=` params); `sensitivity.reopen_zero_sensitivity` → `reopen_zero_sensitivity.csv`; pre-fix tables archived in `results/tables/pre_reopen_fix/`; baseline hashes refreshed (old at `.superpowers/sdd/phase8-polish/baseline/tables.pre_reopen_fix.sha256`). 179 tests. 172 games newly nulled (nfl 6 · mlb 0 · nba 77 · nhl 89). Headline win% nfl +0.044→**+0.050** · nba +0.016→**+0.006** · nhl +0.007→**+0.011** · mlb −0.021 (unchanged). Not outcome-blind (surfaced via a Ganz & Allsop literature comparison, not the audit); disclosed as such, with both the scratch and final numbers shipped side by side. Full detail: `docs/results.md` "Reopening-zeros correction", `docs/data-pipeline.md` "Reopening zeros", `docs/design-decisions.md` "Reopening-zeros rule". |
+| Docs number sweep | 2026-09-18 | Task 0 after the reopening-zeros fix. Every number in README, CLAUDE and `docs/*.md` mapped to its exact CSV cell or recomputed from `data/processed/` (dose means, σ, spread sensitivity, correlations). 43 fixes across 8 files. README was a pre-zero-fix snapshot: "seven of eight" → all eight, headline, NHL 6a/6b agreement, dose overlap, LOSO. Also fixed: design-decisions/CLAUDE "NHL inflates ~12×" → ~8×; the "every team was sourced" forking-path sentence → 29 sourced / 15 data-only / none unverified; stale treated dose means, LOSO 0.55→0.58 SE, NBA MDE 7.19→7.50, MLB MDE 4.37→4.36. Not re-verified (no CSV, not recomputed): NYI dual-arena ±0.003, two-way-clustered SE 0.44–0.77×, bubble placebo figures, Elo accuracies. No code or table changed. |
+| B.G5 fix round 2 | 2026-09-18 | N1 re-evaluated on post-reopening-fix data: the Ganz presence mapping is +2.61 (nulled games dropped) / +2.42 (counted as fans-present), 90–95% up our NBA interval; live clause + assert band on both variants. M5: NHL within-2021 margin CI [−3.20, −0.09], p = .039, disclosed as the only within-season fit below .05, assert-guarded; it is team-clustered (the "game-clustered" label was wrong in docs). Minors m1–m5 + reviewer new-m3/xref fixed. Re-review CLOSED (0 C/0 I). Gate: render clean on `hfa` kernel, paper 8/8, tests 179, tables 23/23, drift fully traced. Docs: Ganz raw-mean framing corrected in literature-review/paper-writing-guide/results/README. |
+| B.G6 | 2026-09-18 | Claim audit of sec-limits + conclusion: 36 rows, 13 not supported — the conclusion restated claims G1–G5 had corrected in the body. User approved all 5 escalations: "all centred near zero / none able to exclude NFL-sized" replaced (MLB win CI excludes it; NFL ≈96% of its HFA per unit, +0.013 without 2018); ceiling stated under RI with the two team-clustered exceptions; season-level floor sentence added; "one declared exception" (reopening-zeros correction) to the post-hoc classes; NHL/MLB sign-reversal demoted from durable contribution to a one-league illustration (MLB shows none; 4 of 8 cells). Verifier CLOSED. Gate green. |
 
-**⬅ Next: Phase 8 stage B.G5 resumes at fix round 2** (N1 — the Ganz & Allsop presence-mapping
-sentence, reworded against the new tables; M5 — the NHL within-2021 margin game-clustered CI,
-which now excludes zero with the wrong sign), then the G5 gate. B.G6+ only on user say-so. See
-`docs/paper-writing-guide.md`.
+| B.S (Stage B close) | 2026-09-21 | Whole-paper sweeps + content checklist, 2 verifier rounds. Game→team-clustered; RI "no trend" → linear trend; British spellings → 0; within-2021 NHL no longer "exogenous" (E1). NYI 2020–21 ESPN venue mislabel (28 games on Barclays capacity, dose ≈0.88 of true) disclosed, not fixed (E2). tbl-within shows all four leagues (was NHL+MLB while prose counted eight). tbl-main gains (b) CIs; caption no longer calls (b) per-unit. **Units error fixed:** (a)/(b) coherence now compares (b) with (a) × dose gap — NFL close (−7.6%/+5.7%), NBA/MLB far apart; old "(b) smaller in NFL, as expected from raw vs adjusted" was false. Audit trail `.superpowers/sdd/phase8-polish/stage-b-S-*.md`. |
+
+**⬅ Next: Phase 8 Stage D0** (voice profile), on user say-so. Start from the phase8
+ledger's final "RESUME HERE" block (2026-09-21, post-C2). See `docs/paper-writing-guide.md`.
 
 ## Phase 7 extras worth knowing
 
@@ -87,6 +90,29 @@ round). What it is actually catching, across ~150 audited claims:
 Discipline that made it work: the CSVs are authoritative, the controller re-derives every
 load-bearing number before escalating, and fixes are wired as live expressions rather than typed.
 Captions are the one place that cannot be — see `docs/agent-pitfalls.md`.
+
+## Phase 8 stage C1 — citation verification (2026-09-21, closed)
+
+All 12 original bib entries verified against primary sources (3 sequential agents + new-source batch +
+fresh spot-check). Shipped: 3 author-name fixes (Wang/Qin, Higgs, Guérette), ESPN url → live endpoint,
+all `urldate` → 2026-09-21; Gong reworded accuracy → **home bias**; Schank "published" → unrefereed,
+null scoped to 2020/21; realignment rationale now league-stated (`nhl2020seasonplan`); Wikipedia
+replaced and its limitations paragraph deleted; bubble-"home" sentence cut to what NBA.com supports;
+sec-mlb officiating sentence rewritten — **Saiegh & Wong (2026) find MLB umpire bias rises with
+occupancy** (small), which contradicted the planned "not crowd-dependent" wording. Bib 12 → 18 entries.
+Ledger number-rows: Ganz page refs corrected. Gates: render 0, no citeproc warnings, paper 8, suite 179,
+tables 23/23.
+
+## Phase 8 stage C2 — NFL crowd noise / communication (2026-09-21, closed; Stage C closed)
+
+Search agent (25 queries, 21 candidates) → controller re-read every cited quote → user approved
+recommendations → fresh reviewer (no blocking; 2 minor overstatements fixed). **Finding against the
+planned mechanism:** Farnell (2023, JSE, NFL 2018–2020) finds crowds do NOT affect offensive pre-snap
+penalties for either side; the crowd effect is fewer home-*defense* pre-snap penalties. Intro keeps
+the channel as "widely believed" (snap-count clause added, uncited); sec-lit gains Farnell +
+McMahon & Quintanar (2024, NCAA; their "noise" inference is a loss of significance with a larger
+2020 point estimate — stated) + Saiegh & Wong (C1 carry item). Hsu (2024) dropped: no readable copy.
+Bib 18 → 20. Gates: render 0, citeproc 0, paper 8, suite 179, tables 23/23, drift 19 traced.
 
 ## Deferred minors (non-blocking, logged in the phase ledgers)
 

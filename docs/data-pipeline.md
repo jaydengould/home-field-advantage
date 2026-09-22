@@ -116,13 +116,13 @@ from OT/shootout ones.
 
 | Sport | Games | Dropped | `crowd_pct` in the treated season |
 |---|---|---|---|
-| nfl | 1657 | 0 | 2020: **.066** (154 empty games) |
-| mlb | 13249 | — | 2020 all-empty; 2021 mean **.436** (post zero-fix + dedup; was 13272 with 23 duplicate rows) |
-| nba | 7562 | 0 | 2021: **.124** (bubble 171, relocated 36, neutral 19) |
-| nhl | 7678 | 0 | 2021: **.100** (952 games, 571 completely empty) |
+| nfl | 1657 | 0 | 2020: **.067** (147 empty games, 6 null reporting zeros) |
+| mlb | 13249 | — | 2020 all-empty; 2021 mean **.444** (post zero-fix + dedup; was 13272 with 23 duplicate rows) |
+| nba | 7562 | 0 | 2021: **.133** (bubble 171, relocated 36, neutral 19) |
+| nhl | 7678 | 0 | 2021: **.111** (952 games, 482 completely empty, 89 null reporting zeros) |
 
-Non-treated seasons run ~.93–.98 for nfl/nba/nhl. **MLB is the outlier: a normal MLB season
-averages only .63–.67 under Option A**, and only 17% of its games exceed 0.9.
+Non-treated seasons run ~.87–.98 for nfl/nba/nhl (Omicron-hit 2022 is the low end; nba/nhl 2020, .79/.83, include the empty bubbles). **MLB is the outlier: a normal MLB season
+averages only .64–.69 under Option A**, and only 17% of its games exceed 0.9.
 
 ## Known data imperfections, documented and NOT fixed
 
@@ -212,9 +212,16 @@ averages only .63–.67 under Option A**, and only 17% of its games exceed 0.9.
   rest 0. `walk_scoreboard` now yields each id and each (start, teams, score) once, and
   `validate()` rejects duplicate `game_id`. The MLB loader was re-run from cache (network blocked):
   13,249 rows, identical to the old interim minus the duplicates.
-- **NHL Islanders dual-arena era** (Barclays/Nassau, seasons 2019–21) — 39 games flagged
-  `relocated_home`, a false positive against the flag's intent. Left in: 0.5% of games,
-  exclusion is conservative, and a split-arena season plausibly does dilute home familiarity.
+- **NHL Islanders dual-arena era** (Barclays/Nassau, split seasons 2019–20 only) — 49 games flagged
+  `relocated_home`: 31 regular-season (2019: 20, 2020: 11), 8 non-bubble playoffs (2019: 2; 2021: 6,
+  the Nassau-labeled ones — see below) and 10 bubble games, all but the 31 excluded anyway. A false positive
+  against the flag's intent. Left in: 0.4% of regular-season games, exclusion is conservative, and
+  a split-arena season plausibly does dilute home familiarity.
+- **NHL Islanders 2020–21 venue mislabel.** Every 2020–21 home game was at Nassau Coliseum
+  (NHL.com, 2020-09-30), but ESPN labels the 28 regular-season ones "Barclays Center", so they take
+  Barclays' empirical capacity (15,795 vs Nassau's 13,971) and dose is recorded at ~0.88 of truth.
+  The 6 flagged-relocated 2021 games are the Nassau-labeled playoffs. Disclosed, not fixed (B.S E2,
+  2026-09-21): a fix means regenerating every table for a ~0.01 dose error on 28 games.
 - **Three NHL outdoor games have ESPN `venue == "None"`** and collapse into one fake venue.
   All three are `neutral_site=True` and excluded, so no estimate is affected.
 - **NHL season 2022 is not a clean control (Omicron).** Canadian teams Dec–Feb averaged

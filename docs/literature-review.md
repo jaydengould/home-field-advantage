@@ -2,7 +2,9 @@
 
 Workstream B of the pre-write-up consolidation phase (Phase 7). Written 2026-07-27.
 Sections 1–5 below are structured so Phase 8 can lift them into the paper directly.
-Numbers refreshed 2026-09-17 against `results/tables/*.csv` post the reopening-zeros fix.
+Numbers re-verified 2026-09-18 against `results/tables/*.csv` (and panel-derived ones — dose means,
+σ, one-goal share — against `data/processed/`) post the reopening-zeros fix. Published-study numbers are
+as transcribed from the sources in §0, not re-derived.
 
 **The result being positioned.** Four sports, TWFE pooled, win-probability LPM
 (`results/tables/twfe_cross_sport.csv`):
@@ -41,7 +43,16 @@ Retrieved and read in full or in substantial part:
 | `paine_nhl_elo` | Substack post, full text |
 | `espn_data` | live endpoints re-verified 2026-07-27 (HTTP 200; `gameInfo.attendance` present) |
 | `nhl2020realignment` | NHL.com article, full text |
-| `wikipedia2020stanleycup` | Wikipedia article, full text |
+| ~~`wikipedia2020stanleycup`~~ | removed C1 2026-09-21; replaced by NHL.com sources below |
+| `flannagan2024umpire` · `chiu2022mlb` | publisher full text (open access) |
+| `saiegh2026umpire` | published version, UCSD eScholarship (CC BY) |
+| `losak2021baseball` | published version, Syracuse SURFACE repository |
+| `nhl2020seasonplan` · `nhl2020hubratify` · `nba2020virtualfans` | NHL.com / NBA.com, full text |
+| `farnell2023nflpenalties` | published version, Maynooth University repository (C2 2026-09-21) |
+| `mcmahon2024cfb` | **accepted manuscript** (Oct 2023), WCUPA repository via Wayback snapshot; published version not read (C2) |
+
+C1 (2026-09-21) re-verified every entry above (C2 added the last two); the row-by-row audit is
+`.superpowers/sdd/phase8-polish/citation-ledger.md` + `citation-spotcheck.md`.
 
 Nothing on the reference list is unretrieved. The publisher's copy of
 `systematicreview_ghostgames` is paywalled (Springer and ResearchGate both refuse automated
@@ -86,7 +97,7 @@ call fouls* while saying nothing about who won.
 
 | study | sport / league | outcome | effect with fans | effect without fans | n | direction |
 |---|---|---|---|---|---|---|
-| `ganz2024nbafans` | NBA (2020-21) | points margin | **+2.13 pts** | **+0.44 pts** | 2020-21 regular season, within-season attendance variation, FE-IV | strongly reduced |
+| `ganz2024nbafans` | NBA (2020-21) | points margin | **+2.13 pts** (raw mean) | **+0.44 pts** (raw mean; gap p = .09) | 2020-21 regular season; regressions: +4.53 pts fans allowed vs none (FE, SE 2.07), +1.74 pts per 1,000 fans (IV on max allowable capacity, SE 0.69) | reduced |
 | `leitner2021referees` | 8 European football leagues | home win rate | 63.5% | 52.5% | 1,286 matches (645 with fans, 641 ghost) | strongly reduced |
 | `leitner2021referees` | same | league points/game | +0.61 | +0.11 | as above | strongly reduced |
 | `schank2024bundesliga` | Bundesliga, last 9 matches of 2019/20 | home win prob | baseline | **−13 pp**; home goals −0.45 | 9 matchdays | strongly reduced |
@@ -162,26 +173,31 @@ The sharpest available like-for-like comparison is NBA points margin.
 
 | quantity | with fans | without / reduced fans | drop |
 |---|---|---|---|
-| `ganz2024nbafans` (NBA, published) | **+2.13** | **+0.44** | **−1.69** |
+| `ganz2024nbafans` (NBA, published raw means) | **+2.13** | **+0.44** | **−1.69** |
 | **This study** (NBA, descriptive) | **+2.26** (pooled full-crowd seasons, SE 0.19) | **+0.92** (2021, the restricted season, SE 0.47) | **−1.34** |
 
 Source for our numbers: `results/tables/descriptive_hfa.csv`, rows `nba / pooled_fullcrowd`
 and `nba / 2021`, clean regular-season home games only.
 
-**Both rows are descriptive, not causal.** Ours is a raw seasonal mean comparison; theirs
-is a fixed-effects IV estimate. The rows are placed side by side because the *magnitudes*
-are close, not because the estimators are equivalent.
+**Both rows are raw descriptive means, not causal estimates** (corrected 2026-09-16 from the
+primary source, Phase 8 finding Q9; an earlier version of this file called theirs an FE-IV
+estimate). Ganz & Allsop's 2.13/0.44 are raw 2020–21 averages with and without fans, and they
+call the gap only marginally significant (p = .09). Their causal estimates are +4.53 points for
+fans allowed against none (FE, SE 2.07) and +1.74 per additional 1,000 fans (IV, SE 0.69); similar
+effects for 1–3,000 and 3,000+ allowances point to presence rather than size. Their two rows both
+come from 2020–21; ours compare normal seasons against a restricted one, so the drops are not
+like-for-like, but our raw drop (1.34) and baseline (2.26) are not in conflict with theirs.
 
-Read at face value, our raw NBA before/after drop (1.34 points) is about **79%** of the
-published causal estimate (1.69 points), and our full-crowd baseline (2.26) is slightly
-*larger* than theirs (2.13). Our descriptive data are therefore **not** in conflict with
-Ganz & Allsop. What differs is the **modelled** number: our TWFE NBA margin coefficient is
-**+0.91 (SE 0.96)**, and its 95% CI **[−0.98, +2.80] contains 1.69**. The controls (Elo,
-rest, travel) and team fixed effects absorb part of the raw drop, and what is left is
-estimated too imprecisely to separate from either zero or the published effect.
+What differs is the **modelled** number: our TWFE NBA margin coefficient is **+0.91 (SE 0.96)**,
+95% CI **[−0.98, +2.80]**. Mapping their +4.53 presence estimate into our per-unit-dose units
+through presence shares (the paper's `lit-nba-vars` chunk, live) gives **+2.61**, or +2.42 if the
+77 NBA 2021 games whose zero attendance we null as reporting artifacts are counted as
+fans-present. Either sits at the upper edge of our interval; our point estimate is about a third
+of it (35%), and our power against +2.61 is 77%. Two assumptions carry the mapping: a presence
+rather than size effect, and generalization from sparse 2020–21 crowds to full-crowd seasons.
 
 The same holds for the other sports' descriptive series (`results/tables/descriptive_hfa.csv`):
-NFL 1.75 → 0.14 in 2020, NHL 0.254 → 0.262 in 2021, MLB 0.043 → 0.146/0.184. NFL's raw
+NFL 1.75 → 0.14 in 2020, NHL 0.254 → 0.262 in 2021, MLB 0.044 → 0.189 (2020) / 0.148 (2021). NFL's raw
 drop is large; NHL's and MLB's are absent.
 
 ---
@@ -198,16 +214,14 @@ Minimum detectable effect at 80% power, two-sided α = .05, is `MDE ≈ 2.8 × S
 | sport | our pooled win% coef | SE | MDE at 80% power | prior effect size, same unit | can we detect theirs? |
 |---|---|---|---|---|---|
 | nfl | +0.0501 | 0.0378 | **10.59 pp** | `higgs2021nba` reports little-to-no NFL change, confounded by a pre-existing downward trend (it notes home advantage was *lower* in 2019 than in the COVID-adjusted 2020 season); log-scale, not convertible to pp | no convertible published effect to test against; 10.6 pp is 2× total NFL HFA |
-| mlb | −0.0208 | 0.0156 | **4.37 pp** | `higgs2021nba` reports **no meaningful MLB change** | our null agrees with the only comparable published result |
-| nba | +0.0064 | 0.0268 | **7.50 pp** | `ganz2024nbafans` 1.69 pts → **≈ 4.65 pp** (conversion below) | **No.** MDE is 1.6× their effect; our CI [−4.61, +5.89] pp contains 4.65 pp |
+| mlb | −0.0208 | 0.0156 | **4.36 pp** | `higgs2021nba` reports **no meaningful MLB change** | our null agrees with the only comparable published result |
+| nba | +0.0064 | 0.0268 | **7.50 pp** | `ganz2024nbafans` +4.53 fans-allowed FE → **+2.61 pts** in our margin units (presence mapping, §2); no win-probability conversion | **Barely, in margin units:** at the upper edge of our margin CI [−0.98, +2.80], power 77% |
 | nhl | +0.0107 | 0.0253 | **7.08 pp** | `plosone_nhl_penalties` reports **no outcome effect at all** (see §4) | no outcome effect published to compare against |
 
-**Margin-to-win-probability conversion, and its warrant.** For NBA we approximate game
-margin as Normal with mean μ and the empirically measured within-sport dispersion, so
-`P(home win) = Φ(μ/σ)`. Using **our own** clean regular-season NBA panel, σ = 14.42 points
-(n = 6,925). Then Φ(2.13/14.42) − Φ(0.44/14.42) = 0.5587 − 0.5122 = **0.0465**. This is a
-defensible conversion for basketball (margins are near-normal, ties impossible, σ estimated
-from the same population we model). It is **not** defensible for the football (soccer)
+**No win-probability conversion.** An earlier version converted 2.13 → 0.44 into ≈4.65 pp via
+Φ(μ/σ) with σ = 14.42. It is retired: that pair is a raw mean gap, not a causal estimate, so the
+conversion compared unlike things. The only published NBA estimate mapped into our units is the
+margin presence mapping in §2. Conversion is also **not** defensible for the football (soccer)
 studies — draws break the binary outcome and the 3-1-0 points system is not a win
 probability — so `leitner2021referees`' 0.61 → 0.11 *points per game* and
 `schank2024bundesliga`'s effects are **left unconverted**; no conversion is invented for them.
@@ -246,7 +260,7 @@ data spans a full unit.** Measured on the exclusion-filtered estimation panel, c
 `crowd_pct` is nfl **.97** · mlb **.65** · nba **.92** · nhl **.92**, against treated-season means
 of .069 · **.322** · .080 · .069. MLB is the outlier in both columns: under this study's Option-A
 empirical-capacity definition, announced MLB attendance never approaches the stadium-season
-maximum, so a normal MLB season averages .63–.67 dose and only 17% of its games exceed 0.9.
+maximum, so a normal MLB season averages .64–.69 dose and only 17% of its games exceed 0.9.
 Rescaling each MDE to its own sport's realised contrast (a crowd effect explaining 100% of HFA
 implies β = HFA ÷ control-crowd level) gives:
 
@@ -268,7 +282,7 @@ This is the same support-range caveat already carried for the NHL within-2021 do
 (§3c), and until now it had never been applied to MLB's *headline* estimate, where it belongs.
 
 The power statement in the blockquote above — under either scaling — is the correct reading of
-what these nulls mean. It is not a hedge; it is the arithmetic. It also explains why our NBA CI comfortably contains the Ganz & Allsop
+what these nulls mean. It is not a hedge; it is the arithmetic. It also explains why our NBA CI reaches the mapped Ganz & Allsop
 estimate: their design has both a larger effective sample for the treatment contrast
 (within-season, game-level attendance variation across venues in 2020-21) and an IV strategy
 targeting exactly that variation, while ours identifies off a **between-season** contrast
@@ -302,7 +316,8 @@ with **team-clustered** standard errors over 30 clusters.
   effect. At k = 4 the heterogeneity test has no power. And there are substantive reasons
   (see the MLB discussion in `CLAUDE.md`) to expect the true effects to differ by sport.
 - No sport's result should be described as a "clean null". Each is **underpowered and
-  centred near zero**.
+  indistinguishable from zero**, which is not "near zero": NFL's estimate is ~96% of its own
+  win-probability HFA per unit of `crowd_pct`.
 
 ---
 
@@ -387,6 +402,8 @@ division mechanically changes the travel distribution in 2021, which is exactly 
 diagnostic was built to check — and the diagnostic came back showing
 `corr(crowd_pct, away_travel_km | 2021) = −0.143`, i.e. weak.
 
+> **Superseded C1 (2026-09-21):** §§5.2–5.3 now cite `nhl2020hubratify` (hubs, Aug 1) instead of Wikipedia. The "presentation customised for the designated home team" detail below is NOT supported by any league source and was removed from the paper; see `docs/paper-writing-guide.md` §Citations.
+
 ### 5.2 Toronto and Edmonton played bubble games in their own arenas — **VERIFIED**
 
 Cite `wikipedia2020stanleycup`. The 2020 Stanley Cup playoffs used two hub cities:
@@ -427,8 +444,8 @@ piece of hedging required is on the *rationale* for the North Division in §5.1.
    match results (`systematicreview_ghostgames`, `wang2023crowdreview`,
    `leitner2021referees`, `ganz2024nbafans`) — with a notable full-season null in
    `schank2024bundesliga` and an MLB null in `higgs2021nba`.
-2. Our **descriptive** NBA numbers (2.26 → 0.92) are close to the published causal estimate
-   (2.13 → 0.44). Our data do not look different from theirs; our *modelled* estimate is
+2. Our **descriptive** NBA numbers (2.26 → 0.92) are close to their published raw means
+   (2.13 → 0.44, gap p = .09; not a causal estimate). Our data do not look different from theirs; our *modelled* estimate is
    less precise.
 3. **Power dominates what can be concluded.** At **per-unit `crowd_pct` scaling**, in seven of
    eight sport × outcome cells our MDE at 80% power exceeds the total home advantage in that
@@ -436,7 +453,7 @@ piece of hedging required is on the *rationale* for the North Division in §5.1.
    cells fall to ≈1.0 or below, so **state the scaling basis whenever this claim is used** and do
    not assert it is unaffected by the choice (§3b). Where a published effect exists in a
    convertible unit — NBA only — our interval
-   contains it, in both margin and win-probability units. The honest claim is that this study
+   reaches it, at its upper edge, in margin units (§2). The honest claim is that this study
    cannot distinguish a zero crowd effect from a crowd effect accounting for all of home-field
    advantage — not that it found no effect, and not that it contradicts the literature.
 4. Our NHL outcome null and `plosone_nhl_penalties`' NHL penalty finding are **compatible**;

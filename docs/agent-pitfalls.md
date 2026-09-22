@@ -42,9 +42,15 @@ number. Update this file when a new one bites. Keep it to things that recurred o
   spans 0–0.40 and extrapolates 2.5×; MLB's *headline* extrapolates ~1.5×.
 - **Statistics computed on excluded games are not results.** NHL's "richest within-season dose
   variation" selling point was measured on playoff games that no model ever sees. In the actual
-  estimation sample the range is 0 → 0.400 with p99 at 0.283.
+  estimation sample the range is 0 → 0.400 with p99 at 0.288.
 - **Filter on `is_bubble`, never `neutral_site`** — 58 of 130 NHL bubble games are not flagged
   neutral.
+
+- **6a and 6b are in different units.** 6a is per unit of `crowd_pct`; 6b is a level
+  (HFA_full − HFA_reduced). For months the paper compared them unscaled ("differ by 4–268%",
+  "6b smaller in the NFL, as expected from raw vs adjusted") and a caption called both per-unit;
+  every audit round passed it. Compare 6b with 6a × dose gap (`dose_overlap` all_treated
+  control_mean − treated_mean); MLB's gap is 0.33, so the unscaled comparison was off ~3× there.
 
 ## Post-hoc additions need a stated legitimacy class
 
@@ -62,6 +68,14 @@ don't add it.
 - **Test fixability before declaring a limitation.** When asked "can we fix it?", compute the
   answer. The noise-floor decomposition is what turned "we're underpowered" into "more seasons
   would not help, and here is why."
+- **Don't draft a citation's wording before its source is read.** C1's approved MLB sentence ("bias not
+  shown to depend on the crowd") was contradicted by a paper found but not yet read (Saiegh & Wong
+  2026); and a sentence went into the paper citing an NHL source the verifier had already flagged as
+  not supporting it. Read → then write; re-read the verifier's caveats before pasting its proposal.
+- **A 403 or Cloudflare "Just a moment..." page is not "unreadable".** C2's search agent marked
+  McMahon & Quintanar abstract-only; the Wayback Machine had the repository PDF
+  (`archive.org/wayback/available?url=…`, then fetch `web/<ts>id_/<url>`). Try the archive and
+  OpenAlex `locations` before declaring a source unread. Hsu (2024) still had no copy anywhere.
 - **Verify external constants with a web search before locking them into a spec.** Elo
   parameters, published effect sizes, and citations have all been wrong from recollection once.
 - **`QUARTO_PYTHON` does not choose the Jupyter kernel.** Until Phase 8 stage A, every paper render
@@ -93,6 +107,18 @@ don't add it.
   its own category (`kind=all_zero` in `team_audit.csv`), generated from the data, not from the
   residual. **Count all-zero-season entities separately from a diagnostic scoped to "after the
   first X"; the two failure modes don't share a codepath.**
+- **A cited "effect" can be a raw mean.** Ganz & Allsop's NBA 2.13 → 0.44 was carried for phases as
+  their causal estimate and converted into our units; the primary source's tables show it is a raw
+  2020–21 gap (p = .09) and the causal estimates are +4.53 (FE) / +1.74 per 1,000 fans (IV). Read the
+  source's tables, not its abstract or a secondary summary; "1.69 ≈ our 1.34" looked like
+  corroboration and hid it. The same frame survived in the docs after the paper was fixed.
+- **Label the clustering from the code, not from memory.** The NHL within-2021 CI was called
+  "game-clustered" in three ledgers/docs; `within_season_dose` calls `twfe.fit`, which clusters by
+  home team (29 clusters).
+- **"This number appears in some CSV" proves nothing.** The CSVs hold thousands of values: 43% of
+  all 3-decimal numbers below 1 match *some* cell by chance, so a grep/match sweep passed the stale
+  MLB triple `0.146/0.184`. Verify a docs number by naming its exact table, row and column (or the
+  panel computation), never by finding it somewhere.
 - **Row-count checks cannot see duplicates.** The zero-fix verification asserted "30,169 rows before
   and after" and passed while 23 MLB rows were duplicates. For a game-level panel, assert a unique
   `game_id` (now in `validate()`) and check same start + teams + score, not just the length.
@@ -104,11 +130,15 @@ don't add it.
   regenerating `results/tables/`, re-check every caption number by hand.
 - **Bound every superlative to a named table.** "The largest positive win-probability estimate
   anywhere in the study" was false twice in one section: `within_season_dose.csv` holds an NBA
-  win coefficient of +0.367 (4.4× the claim) and `season_effects.csv` an NFL deviation of +0.129,
+  win coefficient of +0.387 (4.6× the claim) and `season_effects.csv` an NFL deviation of +0.129,
   neither of them printed, because the chunk that would show them filters to two sports. The same
-  bug sat in "the largest within-season magnitude anywhere in this study" (NBA margin is +4.44).
+  bug sat in "the largest within-season magnitude anywhere in this study" (NBA margin is +5.55).
   A superlative over *printed* results is checkable; one over "the study" must be checked against
   every CSV, including the rows no table displays.
+  **Narrowing a superlative to "in @tbl-X" is not a fix when tbl-X is itself a filtered view.**
+  "Largest within-season magnitude in @tbl-within" was true only because the table printed NHL
+  and MLB while the prose counted all eight fits; showing every league (B.S C-2, 2026-09-21)
+  made it false again. Tables should show every row the prose counts over.
 - **A figure that reproduces from nothing recurs.** Three separate claims in this paper quoted a
   multiplier no artifact produces: "0.14–0.76×" (imported from a different sensitivity, true range
   0.44–0.77), "roughly fifty times" (true max 38), "four times larger" (true 12.5). Each survived
