@@ -83,7 +83,7 @@ longer belongs in a `docs/` file with a row in the map above.
 **Phases 1–8 complete; the paper is done.** 179/179 tests. All four loaders build validated panels;
 features populate `data/processed/`; descriptive HFA is quantified with a sanity gate; 6a (TWFE
 dose-response) and 6b (on/off before-after) both estimate the crowd effect per sport; 23 CSVs in
-`results/tables/` back every number the paper cites. Uncommitted, awaiting human commit.
+`results/tables/` back every number the paper cites. Committed through Phase 8 (`77abb84`); `paper/` stays gitignored.
 
 **The paper:** `paper/hfa.qmd` → `paper/hfa.pdf` + `paper/hfa.html` (28 pp; `paper/references.bib`, 20
 entries, all primary-verified). Everything in `paper/` except `references.bib` is gitignored until the user
