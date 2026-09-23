@@ -5,7 +5,7 @@ that edge comes from the crowd itself? This project uses the 2020–21 COVID att
 as a natural experiment. It covers 30,146 NFL, MLB, NBA and NHL games (2018–2023), each with a
 measured crowd dose, and estimates the crowd-attributable share of home advantage in each league.
 
-**Paper:** [`paper/hfa.pdf`](paper/hfa.pdf)
+**Paper:** [`paper/hfa.pdf`](paper/hfa.pdf) · **Five-minute summary:** [`docs/summary.md`](docs/summary.md)
 
 ![Crowd effect on home advantage by league, with 95% confidence intervals](results/figures/twfe_crowd_effect.png)
 
@@ -63,6 +63,7 @@ Requires Python 3.11+ and, to render the paper, the [Quarto](https://quarto.org)
 ```bash
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m ipykernel install --sys-prefix --name hfa   # kernel the paper renders with
 .venv/bin/pytest -q
 
 # 1. Load each league from ESPN → data/interim/
@@ -81,7 +82,7 @@ python -m venv .venv
 .venv/bin/python -m src.models.sensitivity
 
 # 4. Paper
-quarto render paper/hfa.qmd
+cd paper && QUARTO_PYTHON=../.venv/bin/python quarto render hfa.qmd
 ```
 
 Raw data is not redistributed. The loaders cache every ESPN response under `data/raw/`, and ESPN

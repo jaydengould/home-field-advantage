@@ -192,3 +192,14 @@ rendering; content sign-off is the cumulative D-group checkpoints and E1 approva
   `descriptive_hfa.csv`, and the ceiling wording follows the paper abstract (per-unit basis named, with the rescaled
   caveat). The NFL leave-2018-out caveat is kept. `.gitignore` now un-ignores `results/figures/twfe_crowd_effect.png`
   so the README can embed it.
+- **Publish prep** (2026-09-22): final skim found one render typo (`empty-`/newline → "empty- stadium", §6.2), the
+  RI "six assignments" line now names MLB's five, and the NHL "smallest relative" claim says "in magnitude" (it is an
+  |coef| comparison; MLB's is −4× its HFA). Internal review tags (`E1 Mxx`, `B.S`, fix-round refs) stripped from qmd
+  comments. `.gitignore`: `paper/` whitelists `hfa.qmd`/`hfa.pdf`/`references.bib` (the global `*.pdf` rule had
+  blocked the README's PDF link); `results/` is no longer ignored, because the paper cites its CSVs by name and reads
+  `pre_zero_fix/`/`pre_reopen_fix/` snapshots nothing regenerates. README: register the `hfa` kernel (`--sys-prefix`)
+  and render with `QUARTO_PYTHON` (plain `quarto render` failed: kernel not found). Re-rendered; 8/8 paper checks, 179/179
+  repo tests.
+- **Summary for outside readers** (2026-09-22): `docs/summary.md` (~900 words), linked from the README. Numbers copied
+  from the rendered paper; spot-checked against `twfe_cross_sport.csv` and `noise_floor.csv`. No number gate: re-sweep it
+  after any table regeneration.

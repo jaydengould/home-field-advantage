@@ -1,0 +1,2394 @@
+---
+title: "Empty Stadiums and the Crowd Channel in Home-Field Advantage"
+subtitle: "A four-league natural experiment and what it cannot resolve"
+author: "Jayden Gould"
+date: today
+abstract: |
+  Home teams win more often than away teams in every major North American sport, taking between
+  52.8% and 57.0% of decided regular-season games in full-crowd seasons, but the share
+  of that advantage attributable to the crowd itself is hard to separate from
+  travel, familiarity, scheduling and officiating. The 2020–21 COVID-19 attendance restrictions
+  offer a natural experiment: for one season in the NFL, NBA and NHL and two in MLB, professional
+  games were played in empty or capacity-capped buildings. We assemble a unified game-level panel of
+  30,146 games across the NFL, MLB, NBA and NHL (seasons 2018–2023) with per-game crowd dose measured
+  as announced attendance over an empirical venue-season capacity, and estimate the crowd-attributable
+  slice of home advantage with two co-primary estimators: a team fixed-effects dose-response
+  regression, and a comparative interrupted time series in which the away team serves as the
+  implicit control group. Point estimates on home win probability are +0.050 (NFL), +0.006 (NBA),
+  +0.011 (NHL) and −0.021 (MLB); every per-sport interval crosses zero. **The finding of this paper
+  is not that null. It is a ceiling.** In all eight sport × outcome cells, per unit of crowd dose,
+  the effect this design could detect at 80% power exceeds that sport's entire home-field advantage,
+  the smallest (NBA win probability) by 6%. Rescaled to each league's normal-season crowd dose, three
+  cells fall to approximately one or below. The constraint is that the treatment was assigned to
+  seasons, not games: each league has one restricted season (MLB has two), and in every cell at least
+  one ordinary season deviated further from trend than the restricted season did. On that
+  season-level basis, a decomposition of season-to-season variance shows that extending the panel
+  would leave the detectable effect above the whole home advantage in seven of eight cells. Where a
+  published causal estimate can be mapped into our units (the NBA), it sits at the upper edge of our
+  NBA margin interval. Randomization inference over the five or six season-level treatment assignments each
+  league actually has cannot reject any hypothesis below p = 0.167, zero and a full-advantage effect
+  alike. The team-clustered intervals do exclude a full-advantage effect in two cells (MLB and NBA win
+  probability). For the NBA, season-level noise that those intervals ignore puts the detectable
+  effect back above the whole advantage. MLB win probability is the one cell where the data lean
+  against a crowd effect that large. It rests on the assumption that nothing else home-specific
+  changed in 2020–21, which baseball's 2020 rule changes make least safe, and on 2021 crowd doses
+  that overlap heavily with normal seasons. We set out precisely why this design has the ceiling it
+  has.
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme: cosmo
+    fig-width: 7
+    fig-cap-location: bottom
+  pdf:
+    toc: true
+    number-sections: true
+    documentclass: article
+    geometry:
+      - margin=1in
+    fig-pos: "H"
+    keep-tex: false
+bibliography: references.bib
+jupyter: hfa
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{python}
+#| label: setup
+import sys, pathlib, numpy as np, pandas as pd
+from IPython.display import Markdown
+
+ROOT = pathlib.Path.cwd()
+while not (ROOT / "results" / "tables").exists() and ROOT != ROOT.parent:
+    ROOT = ROOT.parent
+sys.path.insert(0, str(ROOT))
+T = ROOT / "results" / "tables"
+FIG = ROOT / "results" / "figures"
+
+def csv(name):
+    return pd.read_csv(T / f"{name}.csv")
+
+def md(df, index=False):
+    """Minimal markdown table (avoids a tabulate dependency)."""
+    d = df.reset_index() if index else df
+    cols = [str(c) for c in d.columns]
+    lines = ["| " + " | ".join(cols) + " |",
+             "|" + "|".join("---" for _ in cols) + "|"]
+    for _, r in d.iterrows():
+        lines.append("| " + " | ".join("" if pd.isna(v) else str(v) for v in r) + " |")
+    return Markdown("\n".join(lines))
+
+SPORTS = ["nfl", "mlb", "nba", "nhl"]
+UP = {"nfl": "NFL", "mlb": "MLB", "nba": "NBA", "nhl": "NHL"}
+def ci(lo, hi, d=3):
+    return f"[{lo:+.{d}f}, {hi:+.{d}f}]"
+
+import yaml
+TREATED = {s: v["treated_seasons"] for s, v in
+           yaml.safe_load((ROOT / "config" / "sports.yaml").read_text()).items()
+           if isinstance(v, dict) and "treated_seasons" in v}
+_MINUS = "−"
+def num(v, d=3):   return f"{v:.{d}f}".replace("-", _MINUS)
+def sgn(v, d=3):   return f"{v:+.{d}f}".replace("-", _MINUS)
+def pct(v, d=1):   return f"{v * 100:.{d}f}%".replace("-", _MINUS)
+def pp(v, d=1):    return f"{v * 100:.{d}f}".replace("-", _MINUS)
+def thou(n):       return f"{int(round(n)):,}"
+def dot(v, d=3):   # .639 style; only strips a leading zero ("10.593" stays "10.593")
+    s = num(v, d)
+    return s[1:] if s.startswith("0.") else s.replace(_MINUS + "0.", _MINUS + ".")
+def times(v, d=2): return f"{v:.{d}f}×"
+def civ(lo, hi, d=3):
+    """Bracketed [lo, hi] CI using sgn() so both bounds get the Unicode minus
+    the draft uses (ci() above is table-only and keeps an ASCII hyphen)."""
+    return f"[{sgn(lo, d)}, {sgn(hi, d)}]"
+_W = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
+      "fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two").split()
+def words(n):      return _W[int(n)]
+assert (sgn(-0.0193), sgn(0.046), pct(0.528), thou(30169), dot(0.639), dot(10.593), words(7), times(1.018), pct(-0.05), pp(-0.0193), words(22), civ(-1.002, 4.297, 1)) == \
+       ("−0.019", "+0.046", "52.8%", "30,169", ".639", "10.593", "seven", "1.02×", "−5.0%", "−1.9", "twenty-two", "[−1.0, +4.3]")
+
+desc = csv("descriptive_hfa")
+twfe_all = pd.concat([csv(f"twfe_{s}") for s in SPORTS])
+did_all = pd.concat([csv(f"did_{s}") for s in SPORTS])
+meta = csv("meta_cross_sport")
+noise = csv("noise_floor")
+seasonfx = csv("season_effects")
+loso = csv("leave_one_season_out")
+overlap = csv("dose_overlap")
+trend = csv("trend_sensitivity")
+sfe = csv("season_fe_sensitivity")
+within = csv("within_season_dose")
+travel = csv("twfe_nhl_travel_diagnostic")
+mlbsplit = csv("mlb_treated_split")
+zsens = csv("zero_attendance_sensitivity")
+rsens = csv("reopen_zero_sensitivity")
+
+def pick(df, **kw):
+    m = np.ones(len(df), bool)
+    for k, v in kw.items():
+        m &= (df[k] == v).values
+    return df[m].iloc[0]
+```
+
+# Introduction {#sec-intro}
+
+```{python}
+#| label: intro-vars
+#| include: false
+assert [len(TREATED[s]) for s in ("nfl", "nba", "nhl", "mlb")] == [1, 1, 1, 2]
+def _season_label(y):
+    """A season ending in year y, in the paper's own 'the 2020–21 NHL season' convention."""
+    return f"{y - 1}–{y % 100:02d}"
+
+_load = yaml.safe_load((ROOT / "config" / "sports.yaml").read_text())["nfl"]["load_seasons"]
+intro_n_seasons = _load[1] - _load[0] + 1
+
+_fc = desc[desc["season"] == "pooled_fullcrowd"]
+intro_hfa_win_min = _fc["home_win_pct"].min()
+intro_hfa_win_max = _fc["home_win_pct"].max()
+
+_intro_hfa = {s: {"home_margin": pick(desc, sport=s, season="pooled_fullcrowd")["mean_home_margin"],
+                   "home_win": pick(desc, sport=s, season="pooled_fullcrowd")["home_win_pct"] - 0.5}
+              for s in SPORTS}
+_LAB = {"home_margin": "margin", "home_win": "win probability"}
+
+intro_mde_gt1_count = sum(
+    (2.8 * pick(twfe_all, sport=s, outcome=oc, sample="pooled")["se"]) / _intro_hfa[s][oc] > 1
+    for s in SPORTS for oc in ("home_margin", "home_win")
+)
+assert intro_mde_gt1_count == len(SPORTS) * 2
+_intro_ratios = {(s, oc): (2.8 * pick(twfe_all, sport=s, outcome=oc, sample="pooled")["se"]) / _intro_hfa[s][oc]
+                  for s in SPORTS for oc in ("home_margin", "home_win")}
+intro_mde_min_ratio = min(_intro_ratios.values())
+_min_ratio_cell = min(_intro_ratios, key=_intro_ratios.get)
+intro_min_ratio_label = f"{UP[_min_ratio_cell[0]]} {_LAB[_min_ratio_cell[1]]}"
+
+import math
+def _phi(x):
+    return 0.5 * (1 + math.erf(x / 2 ** 0.5))
+def _power(s, oc):
+    se = pick(twfe_all, sport=s, outcome=oc, sample="pooled")["se"]
+    hfa = _intro_hfa[s][oc]
+    return _phi(hfa / se - 1.96) + _phi(-hfa / se - 1.96)
+intro_power_lt_half_count = sum(_power(s, oc) < 0.5 for s in SPORTS for oc in ("home_margin", "home_win"))
+# the same count against the full-advantage effect rescaled to each league's control dose.
+def _power_rescaled(s, oc):
+    se = pick(twfe_all, sport=s, outcome=oc, sample="pooled")["se"]
+    hfa = _intro_hfa[s][oc] / pick(overlap, sport=s, scope="all_treated")["control_mean"]
+    return _phi(hfa / se - 1.96) + _phi(-hfa / se - 1.96)
+intro_power_lt_half_rescaled_count = sum(_power_rescaled(s, oc) < 0.5 for s in SPORTS for oc in ("home_margin", "home_win"))
+
+_excl_cells = []
+for s in SPORTS:
+    for oc in ("home_margin", "home_win"):
+        _row = pick(twfe_all, sport=s, outcome=oc, sample="pooled")
+        _cm = pick(overlap, sport=s, scope="all_treated")["control_mean"]
+        _hfa = _intro_hfa[s][oc]
+        _excl_unit = _row["ci_high"] < _hfa or _row["ci_low"] > _hfa
+        _excl_rescaled = _row["ci_high"] < _hfa / _cm or _row["ci_low"] > _hfa / _cm
+        if _excl_unit and _excl_rescaled:
+            _excl_cells.append((s, oc))
+intro_excl_count = len(_excl_cells)
+intro_excl_cells_str = ", ".join(f"{UP[s]} {_LAB[oc]}" for s, oc in _excl_cells)
+# pin the abstract's typed "two cells (MLB and NBA win probability)" to
+# this live set, so the next data change fails loudly here instead of only going stale silently.
+assert set(_excl_cells) == {("mlb", "home_win"), ("nba", "home_win")}, \
+    "full-advantage exclusion set no longer matches the abstract's typed 'two cells' claim; reword the abstract"
+
+intro_floor_count = int((noise["ratio_floor"] >= 1).sum())
+# the abstract/intro/conclusion say the NBA win exclusion fails against the season-level floor,
+# MLB win is the one cell below it, and (abstract) every cell has an untreated season deviating further
+# than the treated one. Break loudly if the data stop saying so.
+_nf = noise.set_index(["sport", "outcome"])["ratio_floor"]
+assert _nf[("nba", "home_win")] > 1 and _nf[("mlb", "home_win")] < 1 and intro_floor_count == 7, \
+    "reword the NBA/MLB exclusion sentences (abstract, intro, conclusion)"
+assert all(g.loc[~g["is_treated"], "coef"].abs().max() > g.loc[g["is_treated"], "coef"].abs().max()
+           for _, g in seasonfx.groupby(["sport", "outcome"])), "reword the abstract's 'in every cell at least one ordinary season'"
+
+intro_nfl_win_coef = pick(twfe_all, sport="nfl", outcome="home_win", sample="pooled")["coef"]
+intro_nfl_win_loso = pick(loso, sport="nfl", outcome="home_win", dropped_season=2018)["coef"]
+```
+
+Home teams tend to win. Across the four major North American professional leagues, in the
+full-crowd seasons of the `{python} words(intro_n_seasons)` seasons studied here, the home side takes
+between `{python} pct(intro_hfa_win_min)` and `{python} pct(intro_hfa_win_max)` of decided
+regular-season games. The existence of home-field advantage is one of the most dependable patterns
+in sport. Its *causes* are not.
+
+The candidate mechanisms are well rehearsed and badly identified. Home teams do not travel to
+the game, while away teams do. Home teams know the sightlines, the ice, the wind, the mound. Home
+teams bat last, or get the last line change. On top of that, home teams play in front of a partisan
+crowd, whose noise is widely believed to intimidate visitors, to drown out the visiting offense's
+snap count, and to bend the marginal officiating decision.
+These channels move together in ordinary data: the team that has the crowd is the same team that
+skipped the flight and knows the building.
+
+The attendance restrictions of 2020–21 disrupted the crowd channel far more than any other. They
+covered the NFL's `{python} TREATED["nfl"][0]` season, the NBA's
+`{python} _season_label(TREATED["nba"][0])` and the NHL's `{python} _season_label(TREATED["nhl"][0])`
+seasons, and MLB's `{python} TREATED["mlb"][0]` and `{python} TREATED["mlb"][1]` seasons.
+Familiarity, the rulebook's home-team privileges and the schedule's home-and-away structure
+largely persisted. Not everything else held still, though: schedules, rosters, travel and, in
+baseball, the rules changed too (@sec-assumption states what that does to the estimate). If the
+crowd is worth a measurable share of home advantage, that share should have gone missing.
+
+This paper does two things. First, it **quantifies** home-field advantage descriptively across
+four leagues on a common panel, in both win percentage and scoring margin. Second, it estimates
+the **crowd-attributable slice** of that advantage, using the attendance restrictions as the
+source of variation in crowd size, with the sport treated throughout as a parameter. We have one schema, one feature pipeline, two estimators and four leagues.
+
+Every per-league interval crosses zero. The largest point estimate, the NFL's
+`{python} sgn(intro_nfl_win_coef)` on win probability, falls to `{python} sgn(intro_nfl_win_loso)`
+when the 2018 season is dropped (@sec-loso). We want to be careful about what that means, because a
+common way this literature is misread is to treat an imprecise estimate as an informative one. Our
+central claim is therefore about resolution rather than magnitude:
+
+> In all `{python} words(intro_mde_gt1_count)` sport × outcome cells, per unit of crowd dose, the
+> effect this design could detect at 80% power exceeds that sport's entire home-field advantage,
+> the smallest (`{python} intro_min_ratio_label`) by `{python} pct(intro_mde_min_ratio - 1, 0)`. At
+> per-unit scaling, a crowd effect equal to the whole home advantage would more likely than not go
+> undetected in `{python} words(intro_power_lt_half_count)` of eight cells; rescaled to each league's
+> normal-season dose, in `{python} words(intro_power_lt_half_rescaled_count)`.
+
+This is not a hedge appended to a null result. It is the result.
+`{python} words(intro_excl_count).capitalize()` of these cells' team-clustered intervals
+(`{python} intro_excl_cells_str`) exclude a full-advantage effect. The NBA's does not hold against
+the season-level noise floor (@sec-floor). MLB win probability is the one cell where the data lean
+against a crowd effect as large as the whole advantage, on an assumption that baseball's 2020 rule
+changes make least safe (@sec-mlb). The rest of the paper is an
+attempt to say exactly how large the effect would have to be before we could see it, why the design
+has that ceiling, whether anything could raise it, and where our intervals sit relative to the
+published literature. Adding seasons would not raise the ceiling: on the season-level basis (not
+per unit of crowd dose), the smallest effect detectable against the design's irreducible noise
+floor exceeds the entire home advantage in `{python} words(intro_floor_count)` of eight cells
+(@sec-floor). Section [-@sec-lit] shows that, in the one league where a published causal estimate
+can be mapped into our units, that estimate sits at the upper edge of our interval. This is a statement about our precision,
+not a corroboration of their finding. Our point estimate is about a third of it.
+
+**This study was not pre-registered.** It was built under an internal pre-commitment discipline,
+with one exception we disclose here. The primary specification was first written with full season
+fixed effects. Its first real-data run returned all twelve crowd coefficients negative (three
+leagues, two outcomes and two samples at the time), which we traced to season dummies being near-collinear with a season-level
+treatment, and we changed the model once, to team fixed effects and a linear trend (@sec-notwfe;
+@tbl-sfe reports the original structure for every cell). It has not been re-specified since, and
+the NHL was added afterward under that frozen specification. Diagnostics were reported whichever
+way they came out. Internal discipline is not a public
+timestamp, though, and we do not claim the credibility of one. Complete disclosure is the
+substitute we can offer, and Sections [-@sec-robust] and [-@sec-limits] are written to that
+standard.
+
+# Data {#sec-data}
+
+```{python}
+#| label: data-vars
+#| include: false
+from src.features.build import elo_accuracy
+
+_sports_cfg = yaml.safe_load((ROOT / "config" / "sports.yaml").read_text())
+
+def _elo_acc(sport):
+    panel = pd.read_parquet(ROOT / "data" / "processed" / f"{sport}.parquet",
+                             columns=["home_elo", "away_elo", "home_margin"])
+    acc, _ = elo_accuracy(panel, _sports_cfg[sport]["elo"]["hfa"])
+    return acc
+
+data_n_schema_cols = len(pd.read_parquet(ROOT / "data" / "processed" / "nfl.parquet").columns)
+
+data_elo_acc_nfl = _elo_acc("nfl")
+data_elo_acc_mlb = _elo_acc("mlb")
+data_elo_acc_nba = _elo_acc("nba")
+data_elo_acc_nhl = _elo_acc("nhl")
+
+data_dose_ctrl_nfl = pick(overlap, sport="nfl", scope="all_treated")["control_mean"]
+data_dose_ctrl_nba = pick(overlap, sport="nba", scope="all_treated")["control_mean"]
+data_dose_ctrl_nhl = pick(overlap, sport="nhl", scope="all_treated")["control_mean"]
+data_dose_ctrl_mlb = pick(overlap, sport="mlb", scope="all_treated")["control_mean"]
+
+data_n_leagues_low_overlap = sum(
+    1 for s in SPORTS
+    if pick(overlap, sport=s, scope="all_treated")["control_overlap"] < 0.006
+)
+
+data_mlb_overlap_pooled = pick(overlap, sport="mlb", scope="all_treated")["control_overlap"]
+data_mlb_overlap_2020 = pick(overlap, sport="mlb", scope="2020")["control_overlap"]
+data_mlb_overlap_2021 = pick(overlap, sport="mlb", scope="2021")["control_overlap"]
+data_mlb_treated_mean_2021 = pick(overlap, sport="mlb", scope="2021")["treated_mean"]
+data_nfl_overlap = pick(overlap, sport="nfl", scope="all_treated")["control_overlap"]
+assert data_mlb_overlap_2020 <= data_nfl_overlap, "MLB 2020 overlap now exceeds the NFL's; reword 'no more than'"
+
+# Zero-attendance correction (spec 2026-09-15): games whose ESPN attendance is 0 outside every
+# restriction window carry null crowd_pct in data/processed.
+data_zero_nulled = {s: int(pick(zsens, sport=s, outcome="home_win")["n_nulled"]) for s in SPORTS}
+data_zero_nulled_total = sum(data_zero_nulled.values())
+_mlb_z = pd.read_parquet(ROOT / "data" / "processed" / "mlb.parquet",
+                         columns=["date", "home_team", "attendance", "crowd_pct"])
+# Doubleheader = another game by the same home team within 12 hours. `date` is UTC, so a
+# calendar-day grouping would split evening doubleheaders across midnight.
+_mlb_z = _mlb_z.sort_values("date")
+_gap = _mlb_z.groupby("home_team")["date"].diff()
+_gap_next = _mlb_z.groupby("home_team")["date"].diff(-1).abs()
+_mlb_z_dh = (_gap <= pd.Timedelta("12h")) | (_gap_next <= pd.Timedelta("12h"))
+data_zero_mlb_dh = int(((_mlb_z["attendance"] == 0) & _mlb_z["crowd_pct"].isna() & _mlb_z_dh).sum())
+assert _sports_cfg["mlb"]["zero_attendance_windows"] == [{"seasons": TREATED["mlb"][:1]}], \
+    "MLB zero-attendance window no longer 'first treated season only'; reword the window sentence"
+assert data_zero_mlb_dh > data_zero_nulled["mlb"] / 2, "most MLB nulled zeros are no longer doubleheaders; reword"
+
+# Reopening rule (spec 2026-09-16): treated-season zeros after a team's first game with fans.
+data_reopen_nulled = {s: int(pick(rsens, sport=s, outcome="home_win")["n_nulled"]) for s in SPORTS}
+data_reopen_nulled_total = sum(data_reopen_nulled.values())
+
+# split those nulls into "team has a sourced fans_from
+# entry" vs. "date is the data's own first non-zero attendance alone, for a team with none".
+# Re-derives src.features.build.null_reporting_zeros's own `real`/`reopened` booleans straight
+# from `attendance` (never nulled) and config, so it needs no gitignored audit file and cannot
+# drift from the actual rule that built these tables.
+def _reopen_split(sport):
+    df = pd.read_parquet(ROOT / "data" / "processed" / f"{sport}.parquet")
+    day = pd.to_datetime(df["date"]).dt.normalize()
+    cs = _sports_cfg[sport]
+    real = pd.Series(False, index=df.index)
+    for w in cs["zero_attendance_windows"]:
+        m = pd.Series(True, index=df.index)
+        if "seasons" in w:
+            m &= df["season"].isin(w["seasons"])
+        if "start" in w:
+            m &= (day >= pd.Timestamp(w["start"])) & (day <= pd.Timestamp(w["end"]))
+        if "home_teams" in w:
+            m &= df["home_team"].isin(w["home_teams"])
+        real |= m
+    audited = (df["season"].isin(cs["treated_seasons"]) & ~df["is_playoff"] & ~df["is_bubble"]
+               & ~df["neutral_site"] & ~df["relocated_home"])
+    first = day.where(audited & (df["attendance"] > 0)).groupby([df["season"], df["home_team"]]).transform("min")
+    sourced_mask = pd.Series(False, index=df.index)
+    for f in cs["fans_from"]:
+        d = pd.Timestamp(f["date"])
+        m = (df["season"] == f["season"]) & (df["home_team"] == f["team"])
+        first = first.where(~m | (first <= d), d)
+        sourced_mask |= m
+    reopened = audited & (day >= first)
+    for r in cs["reclosures"]:
+        reopened &= ~((df["home_team"] == r["team"]) & (day >= pd.Timestamp(r["start"]))
+                      & (day <= pd.Timestamp(r["end"])))
+    newly = (df["attendance"] == 0) & real & reopened   # real under fix 1, flipped by this rule
+    return df, newly, sourced_mask
+
+_reopen_detail = {s: _reopen_split(s) for s in SPORTS}
+data_reopen_sourced_null = sum(int((newly & sm).sum()) for _, newly, sm in _reopen_detail.values())
+data_reopen_unsourced_null = sum(int((newly & ~sm).sum()) for _, newly, sm in _reopen_detail.values())
+assert data_reopen_sourced_null + data_reopen_unsourced_null == data_reopen_nulled_total, \
+    "reopening-null sourced/unsourced split no longer sums to the total; reword the Data-section sentence"
+
+_nhl_df, _nhl_newly, _nhl_sourced_mask = _reopen_detail["nhl"]
+_nhl_audited = (_nhl_df["season"].isin(_sports_cfg["nhl"]["treated_seasons"]) & ~_nhl_df["is_playoff"]
+                & ~_nhl_df["is_bubble"] & ~_nhl_df["neutral_site"] & ~_nhl_df["relocated_home"])
+data_reopen_nsh_stl_n = {t: int((_nhl_audited & (_nhl_df["home_team"] == t)).sum()) for t in ("NSH", "STL")}
+assert (data_reopen_nsh_stl_n["NSH"] == data_reopen_nsh_stl_n["STL"]
+        and all(int((_nhl_audited & (_nhl_df["home_team"] == t) & (_nhl_df["attendance"] > 0)).sum()) == 0
+                for t in ("NSH", "STL"))), \
+    "Nashville/St. Louis no longer both all-zero all season; reword the Data-section NSH/STL sentence"
+
+data_untreated_before_nfl = TREATED["nfl"][0] - _sports_cfg["nfl"]["load_seasons"][0]
+data_untreated_before_nba = TREATED["nba"][0] - _sports_cfg["nba"]["load_seasons"][0]
+assert (TREATED["mlb"][0] - _sports_cfg["mlb"]["load_seasons"][0] == data_untreated_before_nfl
+        and TREATED["nhl"][0] - _sports_cfg["nhl"]["load_seasons"][0] == data_untreated_before_nba), \
+    "NFL/MLB and NBA/NHL no longer share an untreated-season count; reword the load-window sentence"
+```
+
+## Sources
+
+All four leagues are sourced from ESPN's public site API [@espn_data] and keyed on the ESPN event
+identifier, so the pipeline carries no cross-source join apart from the one id-keyed NFL join
+described below. Two endpoints are used: the
+daily *scoreboard* (event id, teams, final scores, venue, neutral-site flag, status) and the
+per-game *summary* (announced attendance). The NFL is a partial exception. Its schedule, closing
+betting spread, rest days, weather, roof type and referee come from `nfl_data_py`, joined to ESPN
+attendance on the schedule's ESPN id column.
+
+Sport-native packages were spiked first and rejected, each for the same reason in a different
+form: attendance is either absent (`nba_api` returns `None`; `nfl_data_py` carries no attendance
+at all), blocked (Pro-Football-Reference 403s automated requests), or, worst of all,
+systematically missing for exactly the games this study depends on (`pybaseball` inherits
+Baseball-Reference's "Unknown" attendance for 2020 empty games, which arrives as `NaN` rather
+than zero, nulling the treatment).
+
+The load window is seasons 2018–2023 for every league: `{python} words(data_untreated_before_nfl)` untreated seasons before the
+restriction window for the NFL and MLB, `{python} words(data_untreated_before_nba)` for the NBA and NHL, and two or three after. That
+window lets a linear time trend be separated from the treated season, and lets the empirical
+capacity definition below anchor itself.
+
+## Panel
+
+Every league normalizes into one game-level schema of `{python} data_n_schema_cols` columns, one row per game, identical
+across sports; leagues null what does not apply to them (MLB has no point spread, indoor sports
+have no weather). All sport-specific handling lives in the loaders. Everything downstream
+(features, models, figures) is sport-blind.
+
+```{python}
+#| label: tbl-panel
+#| tbl-cap: "Panel sizes. The estimation sample is smaller than the loaded panel because of the exclusions in @sec-exclusions and listwise deletion on controls (chiefly rest days, undefined for a team's first game of a season)."
+#| output: asis
+panel_rows = []
+for s in SPORTS:
+    n_loaded = len(pd.read_parquet(ROOT / "data" / "processed" / f"{s}.parquet", columns=["sport"]))
+    n_est = int(pick(twfe_all, sport=s, outcome="home_margin", sample="pooled")["n_obs"])
+    panel_rows.append({
+        "League": UP[s],
+        "Games loaded": thou(n_loaded),
+        "Estimation sample (margin)": thou(n_est),
+        "Treated season(s)": ", ".join(str(y) for y in TREATED[s]),
+    })
+display(md(pd.DataFrame(panel_rows)))
+```
+
+Treated seasons differ by league and are configuration, never a hardcoded year. The NFL played its
+2020 season under restrictions; MLB's 2020 season was entirely empty and its 2021 season partially
+capped; the NBA and NHL restrictions fall in their 2021 seasons (NBA and NHL seasons are labeled by the
+calendar year in which they end, so 2021 = 2020–21). An earlier version of the
+data-sanity gate hardcoded 2020 and returned a false PASS for the NBA off a coincidental gap; the
+gate is now driven entirely by the configured treatment labels.
+
+## Crowd dose {#sec-dose}
+
+The treatment variable is `crowd_pct`, announced attendance divided by an **empirical** capacity,
+defined as the maximum announced attendance that venue recorded in that season. This is not the
+seated capacity of the building, and the difference is material. ESPN's own `venue.capacity`
+field is always null, and announced attendance (tickets distributed) routinely exceeds seated
+capacity: roughly 60% of NFL games, with Dallas announcing ~93,000 in an 80,000-seat stadium.
+No public turnstile series exists, and an empirical, self-calibrating denominator is the only
+definition available that keeps the ratio interpretable.
+
+Treated venue-seasons *borrow* the venue's untreated maximum (taking the larger of the borrowed
+value and their own), so a capped season cannot define its own full house. Which seasons borrow is
+decided from the configured treatment labels, never from a magnitude threshold. A magnitude rule
+misfires on the partial 2021 reopenings, where a genuinely full house can follow a capped one
+within the same season.
+
+Two properties of this variable matter for everything that follows:
+
+1. **`crowd_pct == 0` is a real value inside a restriction window**, not a missing one. An empty
+   stadium is the treatment. The documented windows are each league's restricted season
+   (for MLB, `{python} TREATED["mlb"][0]` only: every club admitted fans in `{python} TREATED["mlb"][1]`), the 2020 bubbles, and Canadian home
+   games under the winter 2021–22 Omicron caps. Outside them, ESPN still reports zero attendance for
+   `{python} thou(data_zero_nulled_total)` games (`{python} data_zero_nulled["nfl"]` NFL, `{python} data_zero_nulled["mlb"]` MLB, `{python} data_zero_nulled["nba"]` NBA, `{python} data_zero_nulled["nhl"]` NHL; `{python} data_zero_mlb_dh` of
+   the MLB games are doubleheaders, meaning a second game by the same home team within twelve hours).
+   We treat these as reporting artifacts and set their dose to
+   missing, so the dose-response models drop them. The rule was written before the corrected tables
+   were regenerated; @sec-zero reports what it changes.
+
+   Inside the same restriction windows, ESPN
+   also reports zero for games played after a team had already readmitted the public. A treated-season
+   zero on or after a team's first game with fans (the earlier of its own first non-zero ESPN
+   reading and a sourced public date) is treated as missing too; a documented re-closure keeps a
+   zero real and nulls nothing. "Fans" means spectators from the general public, ticketed or invited
+   as guests, including invited healthcare workers or first responders; team family, staff and
+   broadcast media do not count, and no crowd-size threshold was added, because size is already
+   carried by the dose itself.
+
+   Two NHL teams, Nashville and St. Louis, never recorded a non-zero ESPN
+   attendance all season, so their sourced dates reclassify all `{python} data_reopen_nsh_stl_n["NSH"]` of each
+   team's treated-season home games; those sources describe the crowd as staff, family
+   members and a handful of invited honorees or frontline workers, not a confirmed public audience.
+   Two NFL teams' `fans_from` dates rest on comparably limited evidence: Green Bay's (2020-12-19)
+   names invited healthcare workers and first responders, the same invited-guest class as
+   Nashville and St. Louis; Philadelphia's (2020-10-18) names season-ticket members admitted in
+   limited capacity, a public reopening rather than an invited-guest one.
+
+   In total this reclassifies `{python} thou(data_reopen_nulled_total)` games (`{python} data_reopen_nulled["nfl"]` NFL,
+   `{python} data_reopen_nulled["mlb"]` MLB, `{python} data_reopen_nulled["nba"]` NBA, `{python} data_reopen_nulled["nhl"]` NHL).
+   `{python} thou(data_reopen_sourced_null)` of them are dated from a sourced entry and `{python} thou(data_reopen_unsourced_null)` from the
+   data alone, for a team with no sourced entry; every audited team reached a documented verdict, so
+   none are left unverified on the earlier, empty-stadium coding for lack of one. **This correction is not
+   outcome-blind**: it was found through the literature comparison of @sec-lit, not the audit, and
+   the fan definition above was fixed only after an unamended, scratch version of the rule had
+   already been run and seen. @sec-zero reports what it changed; both versions are in
+   `reopen_zero_sensitivity.csv`.
+2. **A "normal" season is not dose 1.0.** Untreated-season mean dose is `{python} num(data_dose_ctrl_nfl, 2)` (NFL), `{python} num(data_dose_ctrl_nba, 2)` (NBA),
+   `{python} num(data_dose_ctrl_nhl, 2)` (NHL), and **`{python} num(data_dose_ctrl_mlb, 2)` (MLB)**. Under this definition, a typical MLB game runs at roughly
+   two-thirds of that park's best night of the year. Section [-@sec-mlb] shows that this single
+   fact reorganizes what the MLB estimate can mean.
+
+```{python}
+#| label: tbl-dose
+#| tbl-cap: "Crowd dose, treated versus control seasons, on the exclusion-masked sample (before listwise deletion of missing controls). The final column is the share of *normal-season* games whose dose falls inside the treated seasons' 5th–95th percentile range — that is, the degree to which the natural experiment is *not* a clean empty-versus-full contrast."
+#| output: asis
+o = overlap[overlap["scope"] == "all_treated"].set_index("sport").loc[SPORTS].reset_index()
+out = pd.DataFrame({
+    "League": [UP[s] for s in o["sport"]],
+    "Treated mean dose": o["treated_mean"].map("{:.3f}".format),
+    "Share of treated games fully empty": o["treated_share_zero"].map("{:.1%}".format),
+    "Control mean dose": o["control_mean"].map("{:.3f}".format),
+    "Control games inside treated 5–95% band": o["control_overlap"].map("{:.2%}".format),
+    "n treated": o["n_treated"], "n control": o["n_control"],
+})
+display(md(out))
+```
+
+@tbl-dose is, in retrospect, the most consequential descriptive table in the paper. For `{python} words(data_n_leagues_low_overlap)`
+leagues the treatment is a near-disjoint contrast: under 0.6% of normal games look anything like a
+restricted game. For MLB, **`{python} pct(data_mlb_overlap_pooled, 1)`** of normal games fall inside the treated dose range. The
+contamination is entirely 2021 (MLB's 2020 overlaps `{python} pct(data_mlb_overlap_2020, 2)`, no more than the NFL's `{python} pct(data_nfl_overlap, 2)`; its 2021
+overlaps `{python} pct(data_mlb_overlap_2021, 1)` at a mean dose of `{python} num(data_mlb_treated_mean_2021, 3)`). MLB is running a different experiment from the other three
+leagues, and @sec-mlb treats it accordingly.
+
+The root cause is a gap between specification and implementation. The *design*
+defines the treatment as policy capacity caps, while the *code* measures realized attendance over
+empirical capacity. The two coincide wherever the cap binds (the NFL, NBA and NHL restricted
+seasons) and diverge wherever it does not, which is baseball.
+
+## Features and controls
+
+Three controls enter every dose-response model in the main specification (the comparative interrupted-time-series estimator
+in @sec-strategy uses raw means, with no controls), and they are computed identically for all four
+leagues:
+
+- **`elo_diff`**, the pre-game Elo rating difference, is the team-quality control. The
+  implementation is a deliberate middle ground: a margin-of-victory multiplier of
+  `ln(|margin| + 1)` without the autocorrelation correction of the full FiveThirtyEight
+  specification, with home advantage and season-to-season carryover taken verbatim from published
+  parameters and K rescaled where the simpler multiplier required it. Only the NBA's K was rescaled; the NHL's
+  parameters transfer unchanged. NHL
+  parameters follow @paine_nhl_elo. Stored ratings are strictly pre-game: a game's own result never enters its own
+  stored rating. Out-of-sample accuracy is NBA `{python} dot(data_elo_acc_nba)` > NFL `{python} dot(data_elo_acc_nfl)` > NHL `{python} dot(data_elo_acc_nhl)` > MLB `{python} dot(data_elo_acc_mlb)`, the
+  expected ordering, and not implausibly high for pre-game ratings. Elo accuracy is
+  treated here as a bug gate, not a tuning target, because Elo enters only as a control variable.
+- **`rest_diff`** is days since each team's previous game, differenced.
+- **`away_travel_km`** is the great-circle distance from the away team's home venue.
+
+Elo's internal home-advantage constant is held fixed and is never fan-adjusted. FiveThirtyEight's
+MLB implementation uses a smaller home advantage for empty games; adopting that here would bake
+the answer into the control.
+
+Rest and travel are deliberately *not* baked into Elo, as some published implementations do; they
+enter as separate regressors so they are not double-counted.
+
+# Descriptive home-field advantage {#sec-descriptive}
+
+```{python}
+#| label: desc-vars
+#| include: false
+desc_nfl_margin_pooled = pick(desc, sport="nfl", season="pooled_fullcrowd")["mean_home_margin"]
+desc_nfl_margin_treated = pick(desc, sport="nfl", season=str(TREATED["nfl"][0]))["mean_home_margin"]
+desc_nba_margin_pooled = pick(desc, sport="nba", season="pooled_fullcrowd")["mean_home_margin"]
+desc_nba_margin_treated = pick(desc, sport="nba", season=str(TREATED["nba"][0]))["mean_home_margin"]
+desc_mlb_margin_treated0 = pick(desc, sport="mlb", season=str(TREATED["mlb"][0]))["mean_home_margin"]
+desc_mlb_margin_treated1 = pick(desc, sport="mlb", season=str(TREATED["mlb"][1]))["mean_home_margin"]
+desc_mlb_margin_pooled = pick(desc, sport="mlb", season="pooled_fullcrowd")["mean_home_margin"]
+desc_mlb_margin_se_pooled = pick(desc, sport="mlb", season="pooled_fullcrowd")["home_margin_se"]
+desc_mlb_short_season = TREATED["mlb"][0]
+desc_mlb_margin_se_2020 = pick(desc, sport="mlb", season=str(desc_mlb_short_season))["home_margin_se"]
+_mlb_seasons = desc[(desc["sport"] == "mlb") & desc["season"].astype(str).str.isdigit()]
+desc_mlb_neg_seasons = sorted(_mlb_seasons.loc[_mlb_seasons["mean_home_margin"] < 0, "season"].astype(str))
+assert len(desc_mlb_neg_seasons) >= 2, "fewer than two negative MLB seasons; reword the descriptive-SE sentence"
+desc_mlb_neg_years = ", ".join(desc_mlb_neg_seasons[:-1]) + " and " + desc_mlb_neg_seasons[-1]
+desc_nhl_margin_treated = pick(desc, sport="nhl", season=str(TREATED["nhl"][0]))["mean_home_margin"]
+desc_nhl_margin_pooled = pick(desc, sport="nhl", season="pooled_fullcrowd")["mean_home_margin"]
+
+nhl_seasons = ["2018", "2019", "2020", "2021", "2022", "2023"]
+desc_nhl_wp = {s: pick(desc, sport="nhl", season=s)["home_win_pct"] for s in nhl_seasons}
+_nhl_wp_diffs = np.diff([desc_nhl_wp[s] for s in nhl_seasons])
+desc_nhl_steps_total = len(_nhl_wp_diffs)
+desc_nhl_steps_up = int((_nhl_wp_diffs > 0).sum())
+
+_nhl_treated = str(TREATED["nhl"][0])
+_nhl_untreated = [s for s in nhl_seasons if s != _nhl_treated]
+desc_nhl_untreated_count = len(_nhl_untreated)
+_nhl_coef = np.polyfit([int(s) for s in _nhl_untreated], [desc_nhl_wp[s] for s in _nhl_untreated], 1)
+desc_nhl_trend_pred = np.polyval(_nhl_coef, int(_nhl_treated))
+desc_nhl_trend_actual = desc_nhl_wp[_nhl_treated]
+desc_nhl_trend_gap_se = (abs(desc_nhl_trend_actual - desc_nhl_trend_pred)
+                          / pick(desc, sport="nhl", season=_nhl_treated)["home_win_se"])
+```
+
+Before any causal claim, we need the size of the thing being explained. @tbl-desc reports clean
+regular-season home games only. Playoffs are excluded throughout the paper's main analysis
+(@sec-playoffs revisits them descriptively), as are neutral-site games, relocated home venues and
+the 2020 NBA and NHL bubbles.
+
+```{python}
+#| label: tbl-desc
+#| tbl-cap: "Descriptive home-field advantage, clean regular-season home games. Naive iid standard errors in parentheses; these are guards against over-reading a noisy season, not causal intervals. Restricted seasons are 2020 for the NFL, 2020 and 2021 for MLB, 2021 for the NBA and NHL."
+#| output: asis
+rows = []
+for s in SPORTS:
+    p = pick(desc, sport=s, season="pooled_fullcrowd")
+    tr = desc[(desc["sport"] == s) & (desc["covid_era"] == True)].sort_values("season")
+    rows.append({
+        "League": UP[s],
+        "n (full-crowd)": int(p["n_games"]),
+        "Home win %": f"{p['home_win_pct']:.3f} ({p['home_win_se']:.3f})",
+        "Home margin": f"{p['mean_home_margin']:.3f} ({p['home_margin_se']:.3f})",
+        "Restricted season(s) win %": " / ".join(f"{v:.3f}" for v in tr["home_win_pct"]),
+        "Restricted season(s) margin": " / ".join(f"{v:.3f}" for v in tr["mean_home_margin"]),
+    })
+display(md(pd.DataFrame(rows)))
+```
+
+![Home-field advantage by season, win percentage (top) and scoring margin (bottom). The shaded
+band marks the 2020–21 restriction window; the exact treated season inside it differs by league.
+Error bars are naive iid standard errors.](../results/figures/hfa_by_season.png){#fig-hfa}
+
+Three things in @tbl-desc and @fig-hfa shape the rest of the paper.
+
+**The NFL and NBA dip; MLB and the NHL do not.** NFL scoring margin falls from a pooled `{python} num(desc_nfl_margin_pooled, 2)` to
+`{python} num(desc_nfl_margin_treated, 2)` in `{python} TREATED["nfl"][0]`; NBA margin falls from `{python} num(desc_nba_margin_pooled, 2)` to `{python} num(desc_nba_margin_treated, 2)` in `{python} TREATED["nba"][0]`. MLB's restricted seasons sit at `{python} num(desc_mlb_margin_treated0, 3)` and
+`{python} num(desc_mlb_margin_treated1, 3)` against a pooled `{python} num(desc_mlb_margin_pooled, 3)`, *above* baseline, and the NHL's `{python} TREATED["nhl"][0]` margin of `{python} num(desc_nhl_margin_treated, 3)` is
+indistinguishable from its `{python} num(desc_nhl_margin_pooled, 3)` baseline. As a check on the data, we expected home advantage to be
+positive in full-crowd seasons and to dip in each league's restricted season. The NFL and NBA show
+that pattern; MLB and the NHL do not dip, and on inspection neither exception points to a data
+error. Both turned out to be informative, for different reasons in each league.
+
+**MLB scoring margin is noise-dominated and cannot serve as MLB's primary descriptive signal.**
+Pooled MLB home margin is `{python} sgn(desc_mlb_margin_pooled, 3)` runs with a standard error of `{python} num(desc_mlb_margin_se_pooled, 3)`; per-season standard errors
+run around 0.09 in every season but the shortened `{python} desc_mlb_short_season` one (`{python} num(desc_mlb_margin_se_2020, 3)` there), and `{python} words(len(desc_mlb_neg_seasons))`
+seasons' point estimates are negative (`{python} desc_mlb_neg_years`). The design's premise that margin buys
+power over a binary outcome fails for baseball, where run differential is the noisiest
+outcome in the study relative to its effect. For MLB, win percentage is the descriptive number to
+read.
+
+**Home advantage moves between seasons for reasons that have nothing to do with crowds.** The NHL
+series drifts down across the whole window: `{python} dot(desc_nhl_wp["2018"])`, `{python} dot(desc_nhl_wp["2019"])`, `{python} dot(desc_nhl_wp["2020"])`, **`{python} dot(desc_nhl_wp["2021"])` (restricted)**, `{python} dot(desc_nhl_wp["2022"])`, `{python} dot(desc_nhl_wp["2023"])`.
+This drift is *not* monotone: `{python} words(desc_nhl_steps_up)` of the `{python} words(desc_nhl_steps_total)` steps are increases, and the 2018→2019 step alone
+is larger than the rest combined. The relevant fact is that a linear trend fitted through the `{python} words(desc_nhl_untreated_count)`
+untreated seasons predicts a `{python} TREATED["nhl"][0]` win percentage of `{python} dot(desc_nhl_trend_pred, 4)` against an actual `{python} dot(desc_nhl_trend_actual, 4)`, a gap of
+`{python} num(desc_nhl_trend_gap_se, 2)` standard errors. The restricted season sits *on* the trend through the NHL's untreated
+seasons.
+Section [-@sec-floor] shows that this between-season wobble is the binding constraint on the
+whole design.
+
+# Empirical strategy {#sec-strategy}
+
+```{python}
+#| label: strat-vars
+#| include: false
+from src.models.twfe import _prep
+
+strat_nfl_coef_shipped = pick(sfe, sport="nfl", outcome="home_margin")["coef_shipped"]
+strat_nfl_coef_seasonfe = pick(sfe, sport="nfl", outcome="home_margin")["coef_season_fe"]
+strat_nba_coef_shipped = pick(sfe, sport="nba", outcome="home_margin")["coef_shipped"]
+strat_nba_coef_seasonfe = pick(sfe, sport="nba", outcome="home_margin")["coef_season_fe"]
+strat_nhl_win_shipped = pick(sfe, sport="nhl", outcome="home_win")["coef_shipped"]
+strat_nhl_win_seasonfe = pick(sfe, sport="nhl", outcome="home_win")["coef_season_fe"]
+strat_nhl_win_ratio = strat_nhl_win_seasonfe / strat_nhl_win_shipped
+strat_mlb_coef_shipped = pick(sfe, sport="mlb", outcome="home_margin")["coef_shipped"]
+strat_mlb_coef_seasonfe = pick(sfe, sport="mlb", outcome="home_margin")["coef_season_fe"]
+strat_r2_nfl = pick(sfe, sport="nfl", outcome="home_margin")["collinearity_r2"]
+strat_r2_nba = pick(sfe, sport="nba", outcome="home_margin")["collinearity_r2"]
+strat_r2_nhl = pick(sfe, sport="nhl", outcome="home_margin")["collinearity_r2"]
+strat_r2_mlb = pick(sfe, sport="mlb", outcome="home_margin")["collinearity_r2"]
+
+# Per-season mean crowd_pct on the model (_prep) sample, split into each sport's normal
+# and treated seasons from config — backs the "very nearly a season-level event" claim below.
+_dose_cols = ["season", "crowd_pct", "neutral_site", "relocated_home", "is_bubble", "is_playoff",
+              "home_elo", "away_elo", "home_rest_days", "away_rest_days"]
+def _season_dose(sport):
+    df = _prep(pd.read_parquet(ROOT / "data" / "processed" / f"{sport}.parquet", columns=_dose_cols))
+    return df.groupby("season")["crowd_pct"].mean()
+
+_strat_dose = {s: _season_dose(s) for s in SPORTS}
+
+def _normal_range(sport):
+    d = _strat_dose[sport]
+    normal = d.drop(index=[y for y in TREATED[sport] if y in d.index])
+    return normal.min(), normal.max()
+
+strat_normal_lo_nfl, strat_normal_hi_nfl = _normal_range("nfl")
+strat_normal_lo_nba, strat_normal_hi_nba = _normal_range("nba")
+strat_normal_lo_nhl, strat_normal_hi_nhl = _normal_range("nhl")
+strat_normal_lo_mlb, strat_normal_hi_mlb = _normal_range("mlb")
+
+strat_treated_dose_nfl = _strat_dose["nfl"].loc[TREATED["nfl"][0]]
+strat_treated_dose_nba = _strat_dose["nba"].loc[TREATED["nba"][0]]
+strat_treated_dose_nhl = _strat_dose["nhl"].loc[TREATED["nhl"][0]]
+strat_restricted_lo = min(strat_treated_dose_nfl, strat_treated_dose_nba, strat_treated_dose_nhl)
+strat_restricted_hi = max(strat_treated_dose_nfl, strat_treated_dose_nba, strat_treated_dose_nhl)
+strat_mlb_2021_dose = _strat_dose["mlb"].loc[TREATED["mlb"][1]]
+
+_nhl_bubble = pd.read_parquet(ROOT / "data" / "processed" / "nhl.parquet",
+                               columns=["is_bubble", "neutral_site", "is_playoff"])
+_nhl_bubble = _nhl_bubble[_nhl_bubble["is_bubble"]]
+assert _nhl_bubble["is_playoff"].all(), "some NHL bubble games are not playoff games; reword @sec-exclusions"
+
+# MLB is the one league where a treated-season dummy is not near-collinear with dose; season FE
+# nest that dummy, so the season-FE shift (in shipped SEs) is what adding it does to beta.
+_sfe_mlb = sfe[sfe["sport"] == "mlb"]
+strat_mlb_sfe_max_shift_se = ((_sfe_mlb["coef_season_fe"] - _sfe_mlb["coef_shipped"]).abs()
+                              / _sfe_mlb["se_shipped"]).max()
+assert strat_mlb_sfe_max_shift_se < 1, "MLB season-FE shift >= 1 SE; reword @sec-assumption"
+assert (np.sign(_sfe_mlb["coef_season_fe"]) == np.sign(_sfe_mlb["coef_shipped"])).all(), \
+    "MLB season-FE sign flipped; reword @sec-assumption"
+strat_nhl_bubble_total = len(_nhl_bubble)
+strat_nhl_bubble_neutral = int(_nhl_bubble["neutral_site"].sum())
+strat_nhl_bubble_not_neutral = strat_nhl_bubble_total - strat_nhl_bubble_neutral
+```
+
+## The two estimators
+
+We report two estimators side by side. Both were pre-specified; the second was originally
+planned as a back-pocket robustness check. It was promoted to co-primary, before it was estimated,
+once the treatment proved to be season-clustered.
+
+**(a) Dose-response with team fixed effects.** For game $g$ played at home team $i$ in season $t$:
+
+$$
+y_{git} = \beta \cdot \text{crowd\_pct}_{g} + \gamma' X_{g} + \delta \cdot \text{trend}_{t} + \alpha_i + \varepsilon_{git}
+$$
+
+where $y$ is either home scoring margin or home win (as a linear probability model), $X$ is
+`elo_diff`, `rest_diff`, `away_travel_km`, $\alpha_i$ are home-team fixed effects, and
+$\text{trend}_t$ is a **linear** season index. Standard errors are clustered by home team.
+$\beta$ is the object of interest: the change in the outcome per unit of crowd dose. Because the
+win outcome is a linear probability model, $\beta$ on that outcome *is* a change in win
+probability, which makes it the one unit comparable across four leagues that score in points, runs
+and goals.
+
+**(b) Comparative interrupted time series, away-team-as-control.** The raw, unadjusted version of
+the same comparison: mean home advantage in full-crowd seasons minus mean home advantage in the
+restricted season(s), with the treatment defined at *season* level from the configured labels.
+Its crowd effect is signed so that positive means the crowd helps the home team, matching (a).
+@fig-did shows the comparison it makes: each league's home advantage in full-crowd seasons against
+its restricted season or seasons.
+
+This estimator is often labeled a difference-in-differences, and we use that label only as
+intuition. It is not a 2×2 DiD, because **no untreated group exists**: the pandemic reached every
+team in every league simultaneously. What makes it a comparison at all is that the outcome is
+already a difference: `home − away`. The **away team is the implicit control group**, and other
+seasons are the control period. This nets out symmetric league-wide shifts (a scoring-environment
+change that helps both sides equally leaves the margin untouched), but it does *not* net out a
+home-specific 2020–21 shift. This is the same confound estimator (a) carries. **(b) is the
+intuitive number, not the cleaner identification.**
+
+## Why season fixed effects are left out {#sec-notwfe}
+
+The natural instinct is to put full season dummies in the model alongside team fixed effects. It
+is wrong here because of a structural property of this treatment. Leaving them out was not the original plan: the specification was first written with season
+dummies, and the change described here was made after its first real-data run (@sec-intro).
+
+Outside MLB, the crowd shock is very nearly a pure season-level event: normal-season mean dose
+runs `{python} num(strat_normal_lo_nfl, 3)`–`{python} num(strat_normal_hi_nfl, 3)` in the NFL, `{python} num(strat_normal_lo_nba, 3)`–`{python} num(strat_normal_hi_nba, 3)` in the NBA and `{python} num(strat_normal_lo_nhl, 3)`–`{python} num(strat_normal_hi_nhl, 3)` in the NHL,
+against `{python} num(strat_restricted_lo, 3)`–`{python} num(strat_restricted_hi, 3)` in each league's restricted season. MLB's normal seasons run lower
+(`{python} num(strat_normal_lo_mlb, 3)`–`{python} num(strat_normal_hi_mlb, 3)`), and its 2021 season is only partially restricted (mean dose `{python} num(strat_mlb_2021_dose, 3)`).
+Outside MLB, then, the per-unit coefficient is in practice an on/off contrast between restricted and
+full-crowd seasons, scaled by the dose gap, rather than a dose-response curve; no league shows a
+usable within-season dose curve (@tbl-within).
+
+Full season dummies are therefore near-collinear with the treatment outside MLB: the R² of
+`crowd_pct` on season and team fixed effects is `{python} dot(strat_r2_nfl)` (NFL), `{python} dot(strat_r2_nba)` (NBA) and `{python} dot(strat_r2_nhl)` (NHL), against `{python} dot(strat_r2_mlb)` (MLB),
+and the season-FE coefficient is unstable. When we fit the two-way model anyway, the sign inverts in the
+NFL (margin `{python} sgn(strat_nfl_coef_shipped, 2)` to `{python} sgn(strat_nfl_coef_seasonfe, 2)`) and the NBA (margin `{python} sgn(strat_nba_coef_shipped, 2)` to `{python} sgn(strat_nba_coef_seasonfe, 2)`); in the NHL it keeps its sign but grows to
+`{python} times(strat_nhl_win_ratio, 1)` its shipped size (win probability, `{python} sgn(strat_nhl_win_shipped, 3)` to `{python} sgn(strat_nhl_win_seasonfe, 3)`); and in MLB, where the
+collinearity is weakest, it also keeps its sign and moves toward zero (margin `{python} sgn(strat_mlb_coef_shipped, 2)` to `{python} sgn(strat_mlb_coef_seasonfe, 2)`).
+@tbl-sfe in @sec-nhl reports the full season-FE sensitivity for every league and outcome.
+
+The linear trend is the compromise: it nets out smooth drift in home advantage without erasing a
+discrete one-season shock.
+
+## Exclusions {#sec-exclusions}
+
+Both estimators share one exclusion mask, applied identically in every league:
+
+`neutral_site | relocated_home | is_bubble | is_playoff`
+
+Neutral-site and relocated-home games are excluded because the "home" team is not at home: the
+2020 Blue Jays in Buffalo, the 2021 Raptors in Tampa. Bubble games are excluded because the entire
+regime differs (@sec-bubble). Playoff games are excluded because the higher seed hosts every NFL game before the neutral-site
+Super Bowl and, in the NBA, NHL and MLB, the first game of every series and any deciding game
+(and, in MLB's post-2022 Wild Card round, every game of it), so
+playoff home advantage is contaminated by a quality asymmetry that regular-season home advantage is not.
+
+The NHL bubble is identified by a **date rule**
+(season 2020, from 1 August 2020), not by the neutral-site flag, and that implementation choice is load-bearing. Only `{python} strat_nhl_bubble_neutral` of the `{python} strat_nhl_bubble_total` NHL bubble
+games carry ESPN's neutral-site flag. Toronto and Edmonton hosted the bubble as hub cities
+[@nhl2020hubratify], and the flag is applied inconsistently across their games. Filtering
+the bubble on `neutral_site` alone would miss `{python} strat_nhl_bubble_not_neutral` bubble games; they are
+excluded from the main models regardless, since all `{python} strat_nhl_bubble_total` are also playoff games. The distinction matters only for
+analyses that keep playoff games, such as the descriptive playoff table in @sec-playoffs.
+
+## The identifying assumption {#sec-assumption}
+
+Everything this paper estimates is:
+
+$$
+\hat\beta = \underbrace{\text{crowd effect}}_{\text{what we want}} \;+\; \underbrace{\text{any other 2020–21 league-wide, home-specific shift}}_{\text{what we cannot separate}}
+$$
+
+The linear trend removes *smooth* drift; it does not remove a *discrete* pandemic shock. A
+treated-season dummy cannot usefully be added to separate the two: outside MLB it is
+near-collinear with `crowd_pct`, and in MLB, where it is not, full season fixed effects (which
+absorb it) keep both coefficients' signs and move them less than one standard error (@tbl-sfe). **There is no in-model separation, and nothing in this project
+resolves it.** The 2020–21 seasons brought compressed schedules (outside the NFL), expanded rosters, altered
+travel and testing protocols and, in baseball, outright rule changes. Any of these that moved
+home advantage specifically, rather than scoring symmetrically, is inside our coefficient.
+
+We investigated whether the NBA and NHL bubbles could break this identification apart and they
+cannot; @sec-bubble reports that attempt and its failure.
+
+# Results {#sec-results}
+
+We report the two estimators together, then spend the rest of the section on what they can and
+cannot resolve.
+
+```{python}
+#| label: results-vars
+#| include: false
+_cross = csv("twfe_cross_sport")
+_cross = _cross[_cross["sample"] == "pooled"].set_index("sport")
+res_nfl_winprob_pp = _cross.loc["nfl", "coef"] * 100
+
+res_ri_pvalue_min = seasonfx["ri_pvalue"].min()
+res_ri_floor_min = seasonfx["ri_pvalue_floor"].min()
+res_ri_floor_mlb = seasonfx[seasonfx["sport"] == "mlb"]["ri_pvalue_floor"].iloc[0]
+
+_nfl_sfx = seasonfx[(seasonfx["sport"] == "nfl") & (seasonfx["outcome"] == "home_margin")]
+res_nfl_season2018_dev = _nfl_sfx[_nfl_sfx["season"] == 2018]["coef"].iloc[0]
+res_nfl_season_treated_dev = _nfl_sfx[_nfl_sfx["is_treated"]]["coef"].iloc[0]
+
+res_n_obs_min = min(pick(twfe_all, sport=s, outcome=oc, sample="pooled")["n_obs"]
+                     for s in SPORTS for oc in ("home_margin", "home_win"))
+res_n_obs_max = max(pick(twfe_all, sport=s, outcome=oc, sample="pooled")["n_obs"]
+                     for s in SPORTS for oc in ("home_margin", "home_win"))
+
+# MDE / rescaled ratios: same formula as tbl-mde, restated per-cell in prose
+_mde_dose = overlap[overlap["scope"] == "all_treated"].set_index("sport")["control_mean"]
+def _mde_ratios(s, oc):
+    p = pick(desc, sport=s, season="pooled_fullcrowd")
+    hfa = p["mean_home_margin"] if oc == "home_margin" else p["home_win_pct"] - 0.5
+    se = pick(twfe_all, sport=s, outcome=oc, sample="pooled")["se"]
+    mde = 2.8 * se
+    return mde / hfa, mde * _mde_dose[s] / hfa
+
+_, res_mde_rescaled_nba_win = _mde_ratios("nba", "home_win")
+_, res_mde_rescaled_nba_margin = _mde_ratios("nba", "home_margin")
+_, res_mde_rescaled_mlb_win = _mde_ratios("mlb", "home_win")
+res_mde_unscaled_nhl_margin, res_mde_rescaled_nhl_margin = _mde_ratios("nhl", "home_margin")
+_, res_mde_rescaled_mlb_margin = _mde_ratios("mlb", "home_margin")
+# prose says the three smallest rescaled ratios are NBA win, MLB win, NBA margin, with NBA margin the largest of them.
+_resc = sorted((_mde_ratios(s, oc)[1], (s, oc)) for s in SPORTS for oc in ("home_margin", "home_win"))
+assert [c for _, c in _resc[:3]][2] == ("nba", "home_margin") and set(c for _, c in _resc[:3]) == {("nba", "home_win"), ("mlb", "home_win"), ("nba", "home_margin")}, \
+    "three smallest rescaled MDE ratios changed; reword @sec-power"
+assert _resc[3][1] == ("nhl", "home_margin"), "fourth-smallest rescaled ratio is no longer NHL margin; reword @sec-power"
+
+res_dose_treated_nfl = pick(overlap, sport="nfl", scope="all_treated")["treated_mean"]
+res_dose_treated_mlb = pick(overlap, sport="mlb", scope="all_treated")["treated_mean"]
+res_dose_treated_nba = pick(overlap, sport="nba", scope="all_treated")["treated_mean"]
+res_dose_treated_nhl = pick(overlap, sport="nhl", scope="all_treated")["treated_mean"]
+res_mlb_extrapolation = 1 / data_dose_ctrl_mlb
+
+res_floor_ge1_count = sum(1 for s in SPORTS for oc in ("home_margin", "home_win")
+                           if pick(noise, sport=s, outcome=oc)["ratio_floor"] >= 1.0)
+res_floor_over_naive_min = noise["floor_over_naive"].min()
+res_floor_over_naive_max = noise["floor_over_naive"].max()
+res_noise_nfl_sd_true = pick(noise, sport="nfl", outcome="home_margin")["sd_true"]
+res_noise_nfl_hfa = pick(noise, sport="nfl", outcome="home_margin")["hfa"]
+
+# G3-25 fix: floor_over_naive >= 1.0 holds by construction; split the range into the four
+# cells where sd_true is measurably non-zero and the four where it clamped at zero (†).
+_noise_censored = noise["sd_true_censored"].astype(bool)
+res_floor_censored_count = int(_noise_censored.sum())
+res_floor_measured_count = int((~_noise_censored).sum())
+res_floor_over_naive_measured_min = noise.loc[~_noise_censored, "floor_over_naive"].min()
+res_floor_over_naive_measured_max = noise.loc[~_noise_censored, "floor_over_naive"].max()
+
+_meta4 = meta[meta["scope"] == "4sport"].set_index("method")
+_meta3 = meta[meta["scope"] == "3sport_ex_nhl"].set_index("method")
+res_meta_narrower_fe = 1 - (_meta4.loc["fe", "ci_high"] - _meta4.loc["fe", "ci_low"]) / \
+                            (_meta3.loc["fe", "ci_high"] - _meta3.loc["fe", "ci_low"])
+res_meta_narrower_re = 1 - (_meta4.loc["re", "ci_high"] - _meta4.loc["re", "ci_low"]) / \
+                            (_meta3.loc["re", "ci_high"] - _meta3.loc["re", "ci_low"])
+res_meta_coef_3sport_fe = _meta3.loc["fe", "coef"]
+res_meta_coef_4sport_fe = _meta4.loc["fe", "coef"]
+res_meta_q_4sport = _meta4.loc["fe", "q"]
+res_meta_i2_3sport = _meta3.loc["fe", "i2"]
+res_meta_i2_4sport = _meta4.loc["fe", "i2"]
+# G3-28 fix: name the pooled rows instead of one unnamed "roughly fifty times" figure.
+res_meta_se_over_coef_4fe = _meta4.loc["fe", "se"] / abs(_meta4.loc["fe", "coef"])
+res_meta_se_over_coef_4re = _meta4.loc["re", "se"] / abs(_meta4.loc["re", "coef"])
+
+from scipy.stats import chi2
+res_meta_q_crit = chi2.ppf(0.95, _meta4.loc["fe", "df"])
+
+# Q1 fix (G3-01/G3-02): per-cell coherence of the two estimators, computed live rather than
+# asserted at "roughly 10-25% in every league" (false — see stage-b-G3-audit.md).
+def _ab(s, oc):
+    return (pick(twfe_all, sport=s, outcome=oc, sample="pooled")["coef"],
+            pick(did_all, sport=s, outcome=oc, sample="pooled")["crowd_effect"])
+# (a) is per unit of crowd_pct, (b) is a level (HFA_full - HFA_reduced). Compare like
+# for like: (a) x the league's dose gap (control-season minus treated-season mean dose).
+res_dose_gap = {s: pick(overlap, sport=s, scope="all_treated")["control_mean"]
+                   - pick(overlap, sport=s, scope="all_treated")["treated_mean"] for s in SPORTS}
+_cells = [(s, oc) for s in SPORTS for oc in ("home_margin", "home_win")]
+res_coh_sign_agree = sum((lambda ab: ab[0] * ab[1] > 0)(_ab(s, oc)) for s, oc in _cells)
+# rel = |b| / |a x gap| - 1: positive means the raw level runs larger than the scaled adjusted one
+res_coh_rel = {(s, oc): abs(b) / abs(a * res_dose_gap[s]) - 1
+               for s, oc in _cells for a, b in [_ab(s, oc)] if a * b > 0}
+res_coh_gap_min = min(abs(v) for v in res_coh_rel.values())
+res_coh_gap_max = max(abs(v) for v in res_coh_rel.values())
+res_nhl_margin_a, res_nhl_margin_b = _ab("nhl", "home_margin")
+_r = res_coh_rel
+assert set(k for k, v in _r.items() if abs(v) < 0.1) == {("nfl", "home_margin"), ("nfl", "home_win")}, \
+    "prose says (a) and (b) are close only in the NFL; reword @sec-results"
+assert _r[("nhl", "home_win")] < -0.3 and all(_r[(s, oc)] > 0.3 for s in ("nba", "mlb") for oc in ("home_margin", "home_win")), \
+    "prose orders NHL-win smaller and NBA/MLB larger; reword @sec-results"
+assert _r[("nfl", "home_margin")] < 0 < _r[("nfl", "home_win")], "prose says NFL (b) smaller on margin, larger on win"
+
+# G3-18 fix: two-way (team x season) clustering of the frozen spec, refit live. The two-way
+# SEs come back SMALLER than the shipped ones -- the estimator failing at six seasons, not a
+# correction. "0.14-0.76x" in the old prose imported a different sensitivity (season FE) and
+# does not reproduce here.
+from linearmodels import PanelOLS
+from src.models.twfe import _prep, CONTROLS
+def _twoway_se(sport, outcome):
+    d = _prep(pd.read_parquet(ROOT / "data" / "processed" / f"{sport}.parquet"))
+    d = d[[outcome, "home_team", "season"] + CONTROLS].copy()
+    d[outcome] = d[outcome].astype(float)
+    d[CONTROLS] = d[CONTROLS].astype(float)
+    d = d.dropna()
+    d["season_trend"] = (d["season"] - d["season"].min()).astype(float)
+    d = d.set_index(["home_team", "season"])
+    r = PanelOLS(d[outcome], d[CONTROLS + ["season_trend"]], entity_effects=True).fit(
+        cov_type="clustered", cluster_entity=True, cluster_time=True)
+    return float(r.std_errors["crowd_pct"])
+_tw = {(s, oc): _twoway_se(s, oc) / pick(twfe_all, sport=s, outcome=oc, sample="pooled")["se"]
+       for s in SPORTS for oc in ("home_margin", "home_win")}
+res_twoway_ratio_min, res_twoway_ratio_max = min(_tw.values()), max(_tw.values())
+assert res_twoway_ratio_max < 1, "two-way SEs no longer smaller -- reword @sec-ri"
+
+# G3-32 fix: calendar span of the treated seasons on the model (_prep) sample -- backs
+# "the same N months" (the old "eighteen" was the full-including-playoffs span, not this one).
+_tw_dates = pd.concat([_prep(pd.read_parquet(ROOT / "data" / "processed" / f"{s}.parquet"))
+                       .query("season in @TREATED[@s]")[["date"]] for s in SPORTS])
+res_treated_span_months = (_tw_dates["date"].max() - _tw_dates["date"].min()).days / 30.44
+```
+
+## The two estimators, side by side
+
+```{python}
+#| label: tbl-main
+#| tbl-cap: "Crowd effect on home advantage. (a) is the team-FE dose-response estimator, (b) the raw comparative interrupted time series. (a) is per unit of `crowd_pct`; (b) is the full-crowd minus restricted-season difference in home advantage, a level rather than a per-unit quantity. A positive value means the crowd advantages the home team. Standard errors clustered by home team (30–33 clusters). `n` is estimator (a)'s estimation sample; (b)'s is slightly larger, because (a) drops rows with a missing rest-day difference (a team's first game of a season) or a missing crowd reading."
+#| output: asis
+rows = []
+for s in SPORTS:
+    for oc, lab in [("home_margin", "Margin"), ("home_win", "Win prob.")]:
+        a = pick(twfe_all, sport=s, outcome=oc, sample="pooled")
+        b = pick(did_all, sport=s, outcome=oc, sample="pooled")
+        d = 3 if oc == "home_margin" else 4
+        rows.append({
+            "League": UP[s], "Outcome": lab,
+            "(a) coef (SE)": f"{a['coef']:+.{d}f} ({a['se']:.{d}f})",
+            "(a) 95% CI": ci(a["ci_low"], a["ci_high"], d),
+            "(b) coef (SE)": f"{b['crowd_effect']:+.{d}f} ({b['se']:.{d}f})",
+            "(b) 95% CI": ci(b["ci_low"], b["ci_high"], d),
+            "n": int(a["n_obs"]),
+        })
+display(md(pd.DataFrame(rows)))
+```
+
+![The intuitive picture: home advantage in full-crowd seasons versus the restricted season or
+seasons (MLB has two), by league and outcome.](../results/figures/did_hfa_shrink.png){#fig-did}
+
+![Dose-response crowd effect with 95% confidence intervals, both
+outcomes.](../results/figures/twfe_crowd_effect.png){#fig-twfe}
+
+Estimator (a) is per unit of dose and (b) is a level, so the like-for-like comparison is (b)
+against (a) scaled by each league's dose gap, which is control-season minus restricted-season mean dose:
+`{python} num(res_dose_gap["nfl"], 2)` (NFL), `{python} num(res_dose_gap["mlb"], 2)` (MLB), `{python} num(res_dose_gap["nba"], 2)` (NBA) and `{python} num(res_dose_gap["nhl"], 2)` (NHL).
+The two agree in sign in `{python} words(res_coh_sign_agree)` of the eight cells. NHL margin disagrees
+in sign, with (a) at `{python} sgn(res_nhl_margin_a, 3)` per unit against (b) at `{python} sgn(res_nhl_margin_b, 3)`, on a coefficient
+indistinguishable from zero under either estimator (@sec-nhl). Where the sign agrees, the two are
+close only in the NFL, where (b) is `{python} pct(abs(res_coh_rel[("nfl", "home_margin")]), 1)` smaller than scaled (a) on margin and
+`{python} pct(res_coh_rel[("nfl", "home_win")], 1)` larger on win probability. Elsewhere they are far apart: (b) is
+`{python} pct(abs(res_coh_rel[("nhl", "home_win")]), 0)` smaller in magnitude on NHL win probability, and larger in the NBA (by
+`{python} pct(res_coh_rel[("nba", "home_margin")], 0)` on margin and `{python} pct(res_coh_rel[("nba", "home_win")], 0)` on win probability) and in MLB (by
+`{python} pct(res_coh_rel[("mlb", "home_margin")], 0)` and `{python} pct(res_coh_rel[("mlb", "home_win")], 0)`). **Where they agree, the agreement is not
+corroboration of identification.** Both estimators read the same between-season contrast and
+both carry the confound of @sec-assumption. In the NFL, (b) matching scaled (a) is consistent with
+the adjustments (controls, team fixed effects, trend) doing little net work there, a different and much smaller claim. In the NBA
+and MLB the two are not interchangeable.
+
+On the cross-league unit, win probability, the four point estimates are:
+
+```{python}
+#| label: tbl-cross
+#| tbl-cap: "Cross-league comparison on the linear-probability outcome."
+#| output: asis
+c = csv("twfe_cross_sport")
+c = c[c["sample"] == "pooled"].set_index("sport").loc[SPORTS].reset_index()
+out = pd.DataFrame({
+    "League": [UP[s] for s in c["sport"]],
+    "Δ win prob. per unit dose": c["coef"].map("{:+.4f}".format),
+    "SE": c["se"].map("{:.4f}".format),
+    "95% CI": [ci(a, b, 4) for a, b in zip(c["ci_low"], c["ci_high"])],
+    "p": c["pvalue"].map("{:.3f}".format),
+    "n": c["n_obs"],
+})
+display(md(out))
+```
+
+Every interval crosses zero. The NFL has the only appreciable point estimate, `{python} sgn(res_nfl_winprob_pp, 1)`
+percentage points, and @sec-loso shows that this rests substantially on a single control season.
+We therefore do not present it as suggestive evidence standing alone.
+
+We do not rely on these p-values, because Section [-@sec-ri] shows that the design's
+p-value floor under randomization inference is `{python} num(res_ri_floor_min, 3)`.
+
+## What this design can detect {#sec-power}
+
+The minimum detectable effect at 80% power and two-sided $\alpha = .05$ is approximately
+$2.8 \times \text{SE}$. Setting that against each league's *entire* measured home advantage gives
+the central table of this paper.
+
+```{python}
+#| label: tbl-mde
+#| tbl-cap: "Minimum detectable effect against total home-field advantage. Total HFA is the pooled full-crowd descriptive value: mean home margin, or home win percentage minus .500. The two right-hand columns differ only in scaling and are explained below."
+#| output: asis
+inp = meta[meta["scope"] == "input"].set_index("sport")
+rows = []
+# control-season mean dose, for the rescaled column
+dose = overlap[overlap["scope"] == "all_treated"].set_index("sport")["control_mean"]
+for s in SPORTS:
+    p = pick(desc, sport=s, season="pooled_fullcrowd")
+    hfa = {"home_margin": p["mean_home_margin"], "home_win": p["home_win_pct"] - 0.5}
+    for oc, lab in [("home_margin", "Margin"), ("home_win", "Win prob.")]:
+        se = pick(twfe_all, sport=s, outcome=oc, sample="pooled")["se"]
+        mde = 2.8 * se
+        rows.append({
+            "League": UP[s], "Outcome": lab,
+            "MDE (80% power)": f"{mde:.3f}",
+            "Total HFA": f"{hfa[oc]:.3f}",
+            "MDE ÷ HFA (per unit dose)": f"{mde / hfa[oc]:.2f}×",
+            "MDE ÷ HFA (rescaled)": f"{mde * dose[s] / hfa[oc]:.2f}×",
+        })
+display(md(pd.DataFrame(rows)))
+```
+
+Read the "MDE ÷ HFA (per unit dose)" column first. **In all eight cells, the smallest crowd effect this study could
+reliably detect exceeds the whole of that league's home-field advantage, the smallest margin of
+exceedance (`{python} intro_min_ratio_label`) by `{python} pct(intro_mde_min_ratio - 1, 0)`.** A
+crowd effect that explained *all* of home advantage would, at this per-unit scaling, more likely
+than not go undetected in `{python} words(intro_power_lt_half_count)` of the eight cells, and in
+`{python} words(intro_power_lt_half_rescaled_count)` once rescaled to each league's normal-season dose.
+
+The caveat weighs as much as the finding, so we state it at equal volume. **The coefficient is scaled
+per unit of `crowd_pct`, and no league's data spans a full unit.** Control-season mean dose is `{python} num(data_dose_ctrl_nfl, 2)`
+(NFL), `{python} num(data_dose_ctrl_mlb, 2)` (MLB), `{python} num(data_dose_ctrl_nba, 2)` (NBA), `{python} num(data_dose_ctrl_nhl, 2)` (NHL), against treated means of `{python} num(res_dose_treated_nfl, 3)`, `{python} num(res_dose_treated_mlb, 3)`, `{python} num(res_dose_treated_nba, 3)` and `{python} num(res_dose_treated_nhl, 3)`.
+A crowd effect explaining 100% of home advantage therefore implies a per-unit coefficient of
+HFA ÷ control dose, not HFA itself. Rescaling to each league's normal-season dose (the sixth
+column) brings three cells close to one: NBA win probability to `{python} num(res_mde_rescaled_nba_win, 2)`,
+MLB win probability to `{python} num(res_mde_rescaled_mlb_win, 2)` and NBA margin to `{python} num(res_mde_rescaled_nba_margin, 2)`. The
+remaining five run from `{python} num(res_mde_rescaled_nhl_margin, 2)` (NHL margin, down from `{python} num(res_mde_unscaled_nhl_margin, 2)`) to `{python} num(res_mde_rescaled_mlb_margin, 2)` (MLB margin).
+
+So the `{python} words(intro_mde_gt1_count)`-of-eight statement is correct **at per-unit scaling** and is **not robust to
+rescaling**: the three smallest rescaled ratios sit at `{python} num(res_mde_rescaled_nba_margin, 2)` or below, and the other five exceed one by `{python} pct(res_mde_rescaled_nhl_margin - 1, 0)` or
+more. Any use of this ratio must name which scaling it is quoting. The qualitative claim survives
+either scaling, and it is all we actually need: this design's resolution is on the same order
+as the entire quantity it is trying to decompose.
+
+The same arithmetic has a third consequence, for a headline number this time: **MLB's coefficient extrapolates roughly `{python} times(res_mlb_extrapolation, 1)` beyond the dose baseball typically
+attains.** It reads a 0→1 contrast off an empty-to-typical-full contrast of 0→`{python} num(data_dose_ctrl_mlb, 2)`.
+
+## Randomization inference over `{python} words(intro_n_seasons)` seasons {#sec-ri}
+
+The clustered standard errors in @tbl-main are computed over `{python} thou(res_n_obs_min)` to `{python} thou(res_n_obs_max)` game-level
+observations. This is the wrong denominator, and it is wrong in a way that flatters us.
+
+The treatment was not assigned to games. It was assigned to *seasons*: one shock, delivered
+league-wide, once. The design has **`{python} words(intro_n_seasons)`** season-level assignments to
+compare: the `{python} words(intro_n_seasons)` seasons in the panel (for MLB, `{python} words(intro_n_seasons - len(TREATED["mlb"]) + 1)`: each treated season is ranked against the `{python} words(intro_n_seasons - len(TREATED["mlb"]))` untreated ones). Clustering by season is not the fix (`{python} words(intro_n_seasons)` clusters is far
+below the ~40 that cluster-robust variance estimation needs; the two-way (team × season) clustered attempt
+returns standard errors `{python} times(res_twoway_ratio_min, 2)` to `{python} times(res_twoway_ratio_max, 2)` the size of the shipped ones, which is the
+estimator breaking rather than a correction).
+
+The appropriate inference is randomization-based. We re-estimate the model with each season in
+turn wearing the treatment label, and ask where the actual treated season falls in that reference
+distribution.
+
+```{python}
+#| label: tbl-ri
+#| tbl-cap: "Randomization inference over season-level treatment assignment. Deviations are season indicator coefficients from a model with team fixed effects and a linear season trend. The floor is 1/(1 + number of placebo assignments). Treated deviations are signed (negative = lower home advantage in the treated season, i.e. a positive crowd effect); the untreated column is the largest absolute deviation; the test is two-sided on |deviation|. For MLB the more extreme treated year is ranked against single-season placebos."
+#| output: asis
+rows = []
+for s in SPORTS:
+    for oc, lab in [("home_margin", "Margin"), ("home_win", "Win prob.")]:
+        g = seasonfx[(seasonfx["sport"] == s) & (seasonfx["outcome"] == oc)]
+        tr = g[g["is_treated"]]
+        d = 3 if oc == "home_margin" else 4
+        rows.append({
+            "League": UP[s], "Outcome": lab,
+            "Treated-season deviation": " / ".join(f"{v:+.{d}f}" for v in tr["coef"]),
+            "Largest untreated deviation": f"{g[~g['is_treated']]['coef'].abs().max():.{d}f}",
+            "RI p": f"{g['ri_pvalue'].iloc[0]:.3f}",
+            "RI p floor": f"{g['ri_pvalue_floor'].iloc[0]:.3f}",
+        })
+display(md(pd.DataFrame(rows)))
+```
+
+Two readings follow.
+
+**No randomization-inference p-value in this study falls below `{python} num(res_ri_pvalue_min, 3)`, and the floor of the
+procedure is `{python} num(res_ri_floor_min, 3)`** (`{python} num(res_ri_floor_mlb, 3)` for MLB, which has `{python} words(len(TREATED["mlb"]))` treated seasons). *No result this design is
+capable of producing could reach conventional significance under randomization inference.* This is
+a property of a design with only `{python} words(intro_n_seasons)` season-level assignments.
+
+**Ordinary season-to-season variation in home advantage exceeds the COVID signal.** The NFL's 2018
+season deviates `{python} sgn(res_nfl_season2018_dev, 3)` points of home margin from trend; its treated `{python} TREATED["nfl"][0]` season deviates
+`{python} sgn(res_nfl_season_treated_dev, 3)`. An untreated season moved home advantage twice as far as the pandemic did, in the opposite
+direction, for reasons this study cannot identify.
+
+## Why more seasons would not help {#sec-floor}
+
+The obvious response is to extend the panel. It would not work, for a structural reason.
+
+Decompose the observed between-season spread in home advantage into sampling noise and genuine
+between-season variation, and construct a noise floor from the two components that do *not* shrink
+as control seasons are added: the treated season's own sampling error (2020 happened once, and no
+number of control seasons makes it happen twice) and $\text{sd}_{\text{true}}$, real
+season-to-season variation in home advantage.
+
+```{python}
+#| label: tbl-floor
+#| tbl-cap: "The noise floor. All quantities are on the season-dummy / outcome-level basis — margin points and win-probability points, the same units as home advantage. **This is a different basis from @tbl-mde**, whose ratios are per unit of `crowd_pct`. † marks cells where observed between-season spread fell below average sampling noise and the decomposition clamped at zero; read those as *undetectably small*, not *zero*."
+#| output: asis
+rows = []
+for s in SPORTS:
+    for oc, lab in [("home_margin", "Margin"), ("home_win", "Win prob.")]:
+        r = pick(noise, sport=s, outcome=oc)
+        rows.append({
+            "League": UP[s], "Outcome": lab,
+            "sd(true between-season)": f"{r['sd_true']:.4f}" + (" †" if r["sd_true_censored"] else ""),
+            "Treated-season SE": f"{r['treated_se']:.4f}",
+            "Total HFA": f"{r['hfa']:.4f}",
+            "MDE ÷ HFA (naive)": f"{r['ratio_naive']:.2f}×",
+            "MDE ÷ HFA (floor)": f"{r['ratio_floor']:.2f}×",
+        })
+display(md(pd.DataFrame(rows)))
+```
+
+The floor ratio is at or above 1.0 in `{python} words(res_floor_ge1_count)` of eight cells, a
+different count from @tbl-mde's `{python} words(intro_mde_gt1_count)`, on a **different basis**. The
+two tables must never be quoted side by side without naming their scaling.
+The one cell below 1.0 is MLB win probability (`{python} times(pick(noise, sport="mlb", outcome="home_win")["ratio_floor"], 2)`), where the decomposition clamped at
+zero (†), so its floor is a lower bound. NBA win probability, whose team-clustered interval excludes a
+full-advantage effect, rises from `{python} times(pick(noise, sport="nba", outcome="home_win")["ratio_naive"], 2)` to `{python} times(pick(noise, sport="nba", outcome="home_win")["ratio_floor"], 2)` once season-level variation is admitted.
+
+The decisive number in @tbl-floor is the NFL's: genuine between-season variation in NFL home
+margin is **`{python} num(res_noise_nfl_sd_true, 2)` points, essentially the whole of the NFL's `{python} num(res_noise_nfl_hfa, 2)`-point home advantage.** Home advantage
+in football wobbles by about its own size, season to season, for non-crowd reasons. Against
+that backdrop, one treated season cannot identify a crowd effect of plausible magnitude no matter
+how many control seasons flank it.
+
+Two further consequences follow, and both cut against us:
+
+- The ratio of the honest floor to the naive clustered MDE runs from `{python} num(res_floor_over_naive_min, 2)` to `{python} num(res_floor_over_naive_max, 2)`, never below
+  1.00, which holds **by construction**. In the `{python} words(res_floor_measured_count)` cells
+  where genuine between-season variation is measurably non-zero it rises to `{python} num(res_floor_over_naive_measured_min, 2)`–`{python} num(res_floor_over_naive_measured_max, 2)`; in the
+  `{python} words(res_floor_censored_count)` cells where the decomposition clamped at zero (†) it is
+  exactly 1.00. **Admitting season-level shocks therefore never improves inference, and materially
+  worsens it in half the cells: the team-clustered season-level standard errors are, if anything,
+  optimistic.**
+- Extending the panel would not make randomization inference decisive. More seasons lower the
+  $1/k$ p-value floor, but @tbl-ri shows an untreated season already deviating further than the
+  treated one in every cell, so added seasons would move the p-value toward the treated season's current middling rank,
+  not toward zero.
+
+**Recommendation on record: extending the panel is not worth its cost for this question.**
+
+## Pooling does not tighten the answer {#sec-pool}
+
+With four leagues and four estimates, the obvious temptation is to pool them and read a tighter
+interval.
+
+```{python}
+#| label: tbl-meta
+#| tbl-cap: "Cross-league pooling of the win-probability estimates."
+#| output: asis
+m = meta[meta["scope"] != "input"].copy()
+out = pd.DataFrame({
+    "Set": ["4 leagues" if r == "4sport" else "3 leagues (ex-NHL)" for r in m["scope"]],
+    "Method": ["Fixed-effect (inverse-variance)" if x == "fe" else "Random-effects (DerSimonian–Laird)" for x in m["method"]],
+    "Pooled Δ win prob.": m["coef"].map("{:+.5f}".format),
+    "SE": m["se"].map("{:.5f}".format),
+    "95% CI": [ci(a, b, 4) for a, b in zip(m["ci_low"], m["ci_high"])],
+    "Q (p)": [f"{q:.2f} ({p:.3f})" for q, p in zip(m["q"], m["q_pvalue"])],
+    "I²": m["i2"].map("{:.1%}".format),
+})
+display(md(out))
+```
+
+The pooled estimates are essentially zero. The four-league fixed-effect estimate is about `{python} num(res_meta_se_over_coef_4fe, 1)` times
+smaller than its own standard error, and the random-effects one about `{python} num(res_meta_se_over_coef_4re, 0)` times smaller. The
+four-league confidence interval is `{python} pct(res_meta_narrower_fe, 1)` narrower than the three-league one on a
+fixed-effect basis, `{python} pct(res_meta_narrower_re, 1)` narrower on a random-effects basis. We report all of this and then
+decline to lean on any of it, for three reasons.
+
+**First, the four estimates share a bias, not merely independent noise.** Each one is
+*crowd effect + that league's own 2020–21 non-crowd home-specific shift*. Inverse-variance pooling
+shrinks *sampling* error at rate $1/\sqrt{k}$ and does exactly nothing to a bias common across all
+four leagues: the same pandemic, the same empty buildings, the same travel and testing protocols,
+in the same `{python} words(round(res_treated_span_months))` months. **Any pooled standard error here is a lower bound on the real uncertainty**,
+and no statement of the form "the pooled interval rules out effects larger than X" is licensed by
+this table.
+
+**Second, the heterogeneity statistics carry no information at $k = `{python} len(SPORTS)`$.** The Q test would need
+to exceed `{python} num(res_meta_q_crit, 2)` to reject; it observed `{python} num(res_meta_q_4sport, 2)`. A test with no power cannot show that the
+effects are homogeneous. $I^2$ fell from `{python} pct(res_meta_i2_3sport, 1)` to `{python} pct(res_meta_i2_4sport, 1)` when the NHL was added, mechanically, because
+the NHL estimate landed near the pooled mean. Section [-@sec-mlb] argues on substantive grounds
+that the true per-league effects are *not* common, which is the opposite of what a naive reading
+of $I^2$ would suggest.
+
+**Third, the gain is specification-dependent.** It is `{python} pct(res_meta_narrower_fe, 1)` or `{python} pct(res_meta_narrower_re, 1)` depending on which pooling model
+one prefers, with the fixed-effect point estimate "moving" from `{python} sgn(res_meta_coef_3sport_fe, 4)` to `{python} sgn(res_meta_coef_4sport_fe, 4)`, a movement
+entirely inside noise.
+
+# League-by-league {#sec-leagues}
+
+The design treats sport as a parameter, but the `{python} words(len(SPORTS))` leagues did not receive the same experiment,
+and each needs its own discussion.
+
+## NFL: the largest estimate, resting on one control season {#sec-loso}
+
+```{python}
+#| label: leagues-loso-vars
+#| include: false
+lg_nfl_margin = pick(twfe_all, sport="nfl", outcome="home_margin", sample="pooled")["coef"]
+_loso_nfl = loso[loso["sport"] == "nfl"]
+lg_loso_nfl_2018_win_delta_se = pick(_loso_nfl, outcome="home_win", dropped_season=2018)["delta_over_se_base"]
+lg_loso_nfl_2018_win_coef = pick(_loso_nfl, outcome="home_win", dropped_season=2018)["coef"]
+lg_loso_nfl_max_other = _loso_nfl[_loso_nfl["dropped_season"] != 2018]["delta_over_se_base"].abs().max()
+_loso_mlb = loso[loso["sport"] == "mlb"]
+lg_loso_mlb_max = _loso_mlb.loc[_loso_mlb["delta_over_se_base"].abs().idxmax(), "delta_over_se_base"]
+_loso_nba = loso[loso["sport"] == "nba"]
+lg_loso_nba_max = _loso_nba.loc[_loso_nba["delta_over_se_base"].abs().idxmax(), "delta_over_se_base"]
+_loso_nhl = loso[loso["sport"] == "nhl"]
+lg_loso_nhl_max = _loso_nhl.loc[_loso_nhl["delta_over_se_base"].abs().idxmax(), "delta_over_se_base"]
+```
+
+The NFL produces the study's largest point estimate: `{python} sgn(lg_nfl_margin, 2)` points of margin, `{python} sgn(res_nfl_winprob_pp, 1)` percentage points
+of win probability, an estimate @sec-power shows this design cannot resolve from zero. It is also
+the estimate most sensitive to the composition of the control window.
+
+```{python}
+#| label: tbl-loso
+#| tbl-cap: "NFL leave-one-season-out: each *untreated* season dropped in turn from the frozen specification."
+#| output: asis
+g = loso[loso["sport"] == "nfl"]
+piv = g.pivot(index="outcome", columns="dropped_season", values="coef")
+base = g.groupby("outcome")["coef_base"].first()
+rows = []
+for oc, lab, d in [("home_margin", "Margin", 3), ("home_win", "Win prob.", 4)]:
+    r = {"Outcome": lab, "Base": f"{base[oc]:+.{d}f}"}
+    for c in piv.columns:
+        r[f"drop {c}"] = f"{piv.loc[oc, c]:+.{d}f}"
+    rows.append(r)
+display(md(pd.DataFrame(rows)))
+```
+
+Dropping 2018 moves the win-probability estimate by `{python} sgn(lg_loso_nfl_2018_win_delta_se, 2)` base standard errors, from `{python} sgn(res_nfl_winprob_pp / 100, 3)` to
+`{python} sgn(lg_loso_nfl_2018_win_coef, 3)`. No other season moves either outcome by more than `{python} num(lg_loso_nfl_max_other, 1)` SE. The NHL alone is stable
+under the same exercise (`{python} num(abs(lg_loso_nhl_max), 2)` SE); MLB and the NBA both move about two-thirds of a standard
+error (`{python} num(abs(lg_loso_mlb_max), 2)` and `{python} num(abs(lg_loso_nba_max), 2)` SE respectively).
+
+This has to be read with both halves. It is **partly genuine fragility**: the NFL result does
+lean on one unusually home-friendly control season, the same 2018 that @tbl-ri flags as deviating
+`{python} sgn(res_nfl_season2018_dev, 2)` points. It is also **partly mechanical**, because 2018 is an endpoint of a `{python} words(intro_n_seasons)`-season panel, and
+dropping an endpoint tilts the linear trend that the specification fits. A quadratic trend moves the
+estimate the same way, and @sec-trend shows it is this same fragility again. The
+consequence is narrow and we hold to it: this removes the basis for describing the NFL point
+estimate as suggestive evidence in its own right.
+
+This analysis was added after the main results were known, so its legitimacy needs stating:
+leave-one-season-out is **exhaustive and mechanical**. Every untreated season is dropped exactly
+once and there is no researcher choice inside the procedure, so there is nothing to fit to a
+desired answer.
+
+## NBA: the bubble cannot disentangle the channels {#sec-bubble}
+
+```{python}
+#| label: leagues-bubble-vars
+#| include: false
+_nba_raw = pd.read_parquet(ROOT / "data" / "processed" / "nba.parquet")
+_seed_preview = _nba_raw[_nba_raw["is_bubble"].fillna(False) & ~_nba_raw["is_playoff"].fillna(False)]
+lg_bubble_teams = len(set(_seed_preview["home_team"]) | set(_seed_preview["away_team"]))
+lg_bubble_seed_n = len(_seed_preview)
+# The tbl-bubble caption below types this count rather than computing it: fail loudly if it moves.
+assert lg_bubble_seed_n == 88, f"tbl-bubble caption says 88 restart games, data says {lg_bubble_seed_n}"
+_nhl_raw = pd.read_parquet(ROOT / "data" / "processed" / "nhl.parquet")
+lg_nhl_bubble_n = len(_nhl_raw[_nhl_raw["is_bubble"].fillna(False)])
+```
+
+The 2020 NBA restart at Walt Disney World is superficially the perfect complement to the empty-stadium
+experiment. `{python} words(lg_bubble_teams).capitalize()` teams played `{python} thou(lg_bubble_seed_n)` seeding games and a full postseason at a single
+neutral site, with a designated "home" team for each game. If "home" without a crowd *and* without
+travel still shows an advantage, the residual is familiarity and convention; if it shows none, the
+crowd looks larger.
+
+We ran the decomposition and the placebo. Both are reported here, and neither supports an
+inference.
+
+```{python}
+#| label: tbl-bubble
+#| tbl-cap: "NBA home advantage by regime, computed inline; regular-season games only. Bubble seeding games are the 88 restart games with `is_playoff == False`."
+#| output: asis
+nba = pd.read_parquet(ROOT / "data" / "processed" / "nba.parquet")
+b = nba[nba["is_bubble"].fillna(False)]
+seed = b[~b["is_playoff"].fillna(False)]
+full = pick(desc, sport="nba", season="pooled_fullcrowd")
+empty = pick(desc, sport="nba", season="2021")
+
+def cell(n, m, se, w, wse):
+    return dict(n=int(n), margin=f"{m:+.3f} ({se:.3f})", win=f"{w:.3f} ({wse:.3f})")
+
+sm, sse = seed["home_margin"].mean(), seed["home_margin"].std(ddof=1) / np.sqrt(len(seed))
+sw = seed["home_win"].mean(); swse = np.sqrt(sw * (1 - sw) / len(seed))
+lg_bubble_ci_lo = sm - 1.96 * sse
+lg_bubble_ci_hi = sm + 1.96 * sse
+lg_bubble_full_minus_seed = full["mean_home_margin"] - sm
+lg_bubble_seed_minus_empty = sm - empty["mean_home_margin"]
+rows = [
+    {"Regime": "Full crowd, own arena (untreated seasons)",
+     **cell(full["n_games"], full["mean_home_margin"], full["home_margin_se"],
+            full["home_win_pct"], full["home_win_se"])},
+    {"Regime": "Bubble seeding games (no crowd, no travel, neutral court)",
+     **cell(len(seed), sm, sse, sw, swse)},
+    {"Regime": "Empty / capped, own arena (2021)",
+     **cell(empty["n_games"], empty["mean_home_margin"], empty["home_margin_se"],
+            empty["home_win_pct"], empty["home_win_se"])},
+]
+out = pd.DataFrame(rows).rename(columns={"n": "n games", "margin": "Home margin (SE)",
+                                         "win": "Home win % (SE)"})
+display(md(out))
+```
+
+The **seeding placebo** asks whether a bubble game shows any home advantage at all. It returns
+`{python} sgn(sm, 2)` points on `{python} thou(lg_bubble_seed_n)` games with a standard error of `{python} num(sse, 2)`, an interval of roughly `{python} civ(lg_bubble_ci_lo, lg_bubble_ci_hi, 1)`. That
+interval contains zero *and* it contains the NBA's full normal home advantage of `{python} num(full["mean_home_margin"], 2)`. **It is a
+test that cannot fail**, and reporting it as evidence in either direction would be an abuse of it.
+
+The **decomposition** fares no better, because its bubble-to-empty ordering runs backwards. Full crowd minus bubble is `{python} sgn(lg_bubble_full_minus_seed, 2)` points, in the expected direction. But
+bubble minus empty is `{python} sgn(lg_bubble_seed_minus_empty, 2)`, so the empty-arena regime shows *less* home advantage than the bubble
+regime, when the bubble strips away travel and court familiarity on top of the crowd.
+
+Three structural problems compound the arithmetic ones, and they are why we do not attempt to
+rehabilitate this analysis:
+
+1. **The bubble sits inside the pandemic window.** It swaps one bundled treatment for a different
+   bundled treatment, which leaves no clean counterfactual.
+2. **Bubble "home" was not nothing.** The designated home team got most of the virtual fans on
+   the arena video boards, home-leaning in-venue announcing, and piped-in crowd noise adjusted at
+   home teams' request [@nba2020virtualfans]. The bubble's null is not cleanly a zero.
+3. **The NHL bubble cannot substitute.** All `{python} thou(lg_nhl_bubble_n)` NHL bubble games are playoff games, therefore
+   quality-confounded, so they feed neither a placebo (which requires regular-season games) nor a
+   regular-season decomposition.
+
+We report the table, and we draw no inference from it. The identification problem in
+@sec-assumption stands unresolved.
+
+## NHL: strongest treatment, weakest specification defense {#sec-nhl}
+
+```{python}
+#| label: leagues-nhl-vars
+#| include: false
+from src.models.twfe import fit
+lg_nhl_margin = pick(twfe_all, sport="nhl", outcome="home_margin", sample="pooled")
+lg_nhl_win = pick(twfe_all, sport="nhl", outcome="home_win", sample="pooled")
+lg_nhl_zero_share = pick(overlap, sport="nhl", scope="all_treated")["treated_share_zero"]
+lg_nba_win_coef = pick(twfe_all, sport="nba", outcome="home_win", sample="pooled")["coef"]
+_w22 = fit(_nhl_raw, "home_win", sample="treated", treated_seasons=[2022], trend="none")
+lg_nhl_within2022_win = _w22["coef"]
+# prose says "Neither fit is distinguishable from zero" (within-2022 and within-2021, win prob.).
+assert _w22["pvalue"] > 0.05 and pick(within, sport="nhl", outcome="home_win")["pvalue"] > 0.05, \
+    "reword 'Neither fit is distinguishable from zero' in @sec-nhl"
+
+# "smallest estimate" held for both outcomes at the frozen
+# numbers but no longer does for win probability (NBA is now smaller). Check both live.
+_pooled_by_sport = {s: pick(twfe_all, sport=s, outcome="home_margin", sample="pooled")["coef"] for s in SPORTS}
+assert min(_pooled_by_sport, key=lambda s: abs(_pooled_by_sport[s])) == "nhl", \
+    "NHL margin is no longer the study's smallest-magnitude margin estimate; reword @sec-nhl"
+_pooled_win_by_sport = {s: pick(twfe_all, sport=s, outcome="home_win", sample="pooled")["coef"] for s in SPORTS}
+assert min(_pooled_win_by_sport, key=lambda s: abs(_pooled_win_by_sport[s])) == "nba", \
+    "NBA win probability is no longer the study's smallest-magnitude win estimate; reword @sec-nhl"
+# "smallest margin estimate relative to its own home advantage" -- |coef| / pooled full-crowd HFA margin.
+_rel_margin = {s: abs(_pooled_by_sport[s]) / pick(desc, sport=s, season="pooled_fullcrowd")["mean_home_margin"] for s in SPORTS}
+assert min(_rel_margin, key=_rel_margin.get) == "nhl", \
+    "NHL margin is no longer the smallest margin estimate relative to its own HFA; reword @sec-nhl"
+# the prose says the NFL two-way (season FE) win-probability CI excludes zero on the wrong side.
+lg_nfl_sfe_win = pick(sfe, sport="nfl", outcome="home_win")
+assert lg_nfl_sfe_win["ci_high_season_fe"] < 0, "NFL season-FE win CI no longer below zero; reword @sec-nhl"
+```
+
+The NHL has the study's most complete empty-arena treatment (`{python} pct(lg_nhl_zero_share, 0)` of treated games at zero
+attendance, mean dose `{python} num(res_dose_treated_nhl, 3)`) and returns the study's smallest margin estimate in magnitude relative to its own home advantage,
+`{python} sgn(lg_nhl_margin["coef"], 3)` goals; on win probability it is `{python} sgn(lg_nhl_win["coef"], 3)`, edged
+below by the NBA's `{python} sgn(lg_nba_win_coef, 3)`. Its win-probability interval, `{python} civ(lg_nhl_win["ci_low"], lg_nhl_win["ci_high"], 3)`, **contains both the NFL's
+`{python} sgn(res_nfl_winprob_pp / 100, 3)` and the NBA's `{python} sgn(lg_nba_win_coef, 3)`**. It cannot distinguish zero from an NFL-sized effect, so it is
+consistent with the other leagues' estimates rather than an independent confirmation of them.
+Estimator (b) returns `{python} sgn(res_nhl_margin_b, 3)` on margin against (a)'s `{python} sgn(res_nhl_margin_a, 3)`,
+opposite signs on a coefficient neither estimator can distinguish from zero.
+
+Four diagnostics are reported here whichever way they came out. Only the travel test was
+pre-committed when the NHL was added; the trend, season-fixed-effects and within-season analyses
+were added during review.
+
+**Trend sensitivity.** The linear season trend is not absorbing the treatment:
+
+```{python}
+#| label: tbl-trend
+#| tbl-cap: "NHL trend sensitivity."
+#| output: asis
+g = trend[trend["sport"] == "nhl"]
+rows = []
+for oc, lab, d in [("home_margin", "Margin", 4), ("home_win", "Win prob.", 4)]:
+    r = {"Outcome": lab}
+    for t in ["none", "linear", "quadratic"]:
+        x = pick(g, outcome=oc, trend=t)
+        r[t] = f"{x['coef']:+.{d}f} ({x['se']:.{d}f})"
+    rows.append(r)
+display(md(pd.DataFrame(rows).rename(columns={"none": "No trend", "linear": "Linear (shipped)",
+                                              "quadratic": "Quadratic"})))
+```
+
+Removing the trend entirely moves the win-probability estimate by roughly a fifth of a standard
+error.
+
+**Travel.** The 2020–21 NHL season was played in four realigned divisions, including an
+all-Canadian North Division [@nhl2020realignment], which mechanically changed the travel
+distribution in exactly the treated season. The league and players' union state that the closure
+of the U.S.–Canada border required the realignment and that they sought to minimize travel
+[@nhl2020seasonplan]. If crowd
+and travel fell together, `away_travel_km` could be absorbing the crowd effect. It is not. The
+correlation between dose and away travel within the treated season is `{python} num(pick(travel, outcome="home_margin")["corr_crowd_travel_treated"], 3)`, and dropping the
+control moves the coefficient by `{python} sgn(pick(travel, outcome="home_margin")["delta"], 4)` (margin, from `{python} sgn(pick(travel, outcome="home_margin")["coef_with_travel"], 4)` to `{python} sgn(pick(travel, outcome="home_margin")["coef_without_travel"], 4)`) and `{python} sgn(pick(travel, outcome="home_win")["delta"], 4)` (win probability). Those shifts are `{python} num(pick(travel, outcome="home_margin")["delta"] / lg_nhl_margin["se"], 2)` and `{python} num(pick(travel, outcome="home_win")["delta"] / lg_nhl_win["se"], 2)` of the respective shipped standard errors, with the
+estimation sample identical at `{python} thou(pick(travel, outcome="home_margin")["n_obs_with_travel"])` games in both fits, though on margin the shift is also about `{python} pct(pick(travel, outcome="home_margin")["delta"] / lg_nhl_margin["coef"], 0)` of the coefficient itself.
+
+**The 2022 control season is imperfect, and in a direction that is conservative.** Omicron reduced
+attendance sharply for Canadian teams from December 2021 through February 2022: mean dose 0.519,
+with 26 near-empty games. The configuration deliberately leaves 2022 untreated. The continuous
+dose variable is *correct* for those games (it records what it should), and only the season-level
+labeling used by estimator (b) is imprecise. This affects roughly 1–2% of the control mass and
+biases toward zero. Marking all of 2022 as treated would be worse: it would break the
+self-anchoring capacity definition of @sec-dose.
+
+**Season fixed effects, and the rebuttal.** The NHL is where the argument of @sec-notwfe is at its
+weakest.
+
+```{python}
+#| label: tbl-sfe
+#| tbl-cap: "Season-fixed-effects sensitivity. Collinearity R² is from regressing `crowd_pct` on season and home-team dummies; it is approximate by construction, computed on 1–6% more rows than the fit, which moves it by at most 0.0023."
+#| output: asis
+rows = []
+for s in SPORTS:
+    for oc, lab, d in [("home_margin", "Margin", 3), ("home_win", "Win prob.", 4)]:
+        r = pick(sfe, sport=s, outcome=oc)
+        rows.append({
+            "League": UP[s], "Outcome": lab,
+            "Shipped (team FE + trend)": f"{r['coef_shipped']:+.{d}f} ({r['se_shipped']:.{d}f})",
+            "With full season FE": f"{r['coef_season_fe']:+.{d}f} ({r['se_season_fe']:.{d}f})",
+            "Collinearity R²": f"{r['collinearity_r2']:.3f}",
+        })
+display(md(pd.DataFrame(rows)))
+```
+
+The collinearity that motivates excluding season fixed effects is overwhelming for the NFL (R²
+= `{python} dot(pick(sfe, sport="nfl", outcome="home_win")["collinearity_r2"], 3)`) and strong for the NBA (`{python} dot(pick(sfe, sport="nba", outcome="home_win")["collinearity_r2"], 3)`). It is weaker for the NHL (`{python} dot(pick(sfe, sport="nhl", outcome="home_win")["collinearity_r2"], 3)`), and weaker still for
+MLB (`{python} dot(pick(sfe, sport="mlb", outcome="home_win")["collinearity_r2"], 3)`, @tbl-sfe above). MLB's season-FE estimate keeps its sign and moves toward zero on
+both outcomes, so weak collinearity there does not threaten the conclusion. The NHL's flips the
+story. Under full season fixed effects the NHL win-probability estimate becomes
+**`{python} sgn(pick(sfe, sport="nhl", outcome="home_win")["coef_season_fe"], 3)` (SE `{python} dot(pick(sfe, sport="nhl", outcome="home_win")["se_season_fe"], 3)`), the largest positive win-probability estimate in @tbl-sfe**, while the NFL's own season-FE win-probability estimate is `{python} sgn(pick(sfe, sport="nfl", outcome="home_win")["coef_season_fe"], 3)`, `{python} times(abs(pick(sfe, sport="nfl", outcome="home_win")["coef_season_fe"]) / pick(sfe, sport="nhl", outcome="home_win")["coef_season_fe"], 1)` larger
+in magnitude. An analyst who preferred two-way fixed effects would report an NHL win-probability
+estimate `{python} times(pick(sfe, sport="nhl", outcome="home_win")["coef_season_fe"] / pick(sfe, sport="nhl", outcome="home_win")["coef_shipped"], 1)` the shipped one, and at p = `{python} dot(pick(sfe, sport="nhl", outcome="home_win")["pvalue_season_fe"], 2)` on an interval that
+still spans zero (`{python} civ(pick(sfe, sport="nhl", outcome="home_win")["ci_low_season_fe"], pick(sfe, sport="nhl", outcome="home_win")["ci_high_season_fe"], 3)`) would not be able to call it significant either. The NFL's two-way win-probability estimate,
+`{python} sgn(lg_nfl_sfe_win["coef_season_fe"], 3)` (`{python} civ(lg_nfl_sfe_win["ci_low_season_fe"], lg_nfl_sfe_win["ci_high_season_fe"], 3)`, p = `{python} dot(lg_nfl_sfe_win["pvalue_season_fe"], 3)`), does
+exclude zero, on the wrong side.
+
+We think the shipped specification is still right, and the argument goes beyond collinearity. Within a *normal* season, crowd variation is demand-driven: good teams draw crowds and good
+teams win. A season-fixed-effects specification identifies the crowd effect off exactly that
+endogenous within-season variation. The within-season fits are consistent with that concern but
+cannot confirm it. On win probability, within-2022 dose returns **`{python} sgn(lg_nhl_within2022_win, 3)`**, in a season whose
+variation is mostly demand but includes Omicron-era caps on Canadian teams, while within-2021,
+where variation was set largely by public-health policy, returns **`{python} sgn(pick(within, sport="nhl", outcome="home_win")["coef"], 2)`**. Neither fit is
+distinguishable from zero.
+
+**The NHL's within-season dose curve is wrong-signed.**
+
+```{python}
+#| label: tbl-within
+#| tbl-cap: "Within-treated-season dose regressions, team fixed effects, no trend; MLB, with two treated seasons, also includes a treated-season dummy."
+#| output: asis
+rows = []
+for s in SPORTS:  # B.S C-2: every league, not a selection
+    for oc, lab, d in [("home_margin", "Margin", 3), ("home_win", "Win prob.", 3)]:
+        r = pick(within, sport=s, outcome=oc)
+        rows.append({
+            "League": UP[s], "Outcome": lab,
+            "Within-treated-season coef (SE)": f"{r['coef']:+.{d}f} ({r['se']:.{d}f})",
+            "95% CI": ci(r["ci_low"], r["ci_high"], d),
+            "p": f"{r['pvalue']:.3f}",
+            "Raw mean, empty games": f"{r['raw_empty_mean']:+.3f} (n={int(r['n_empty'])})",
+            "Raw mean, with fans": f"{r['raw_fans_mean']:+.3f} (n={int(r['n_fans'])})",
+        })
+display(md(pd.DataFrame(rows)))
+# prose says only the NHL reverses its raw gap on BOTH outcomes (NFL win reverses alone).
+_rev = within.assign(_r=(within["raw_fans_mean"] - within["raw_empty_mean"]) * within["coef"] < 0)
+assert set(_rev.groupby("sport")["_r"].all().loc[lambda x: x].index) == {"nhl"}, "reword 'Only the NHL reverses on both outcomes'"
+assert set(_rev.loc[_rev["_r"] & (_rev["sport"] == "nfl"), "outcome"]) == {"home_win"}, "reword the NFL win-reversal clause"
+# the prose below says the NHL margin CI excludes zero on the wrong side and is the only
+# within-season fit below p = .05; break loudly if the data stop saying so.
+_wnm = pick(within, sport="nhl", outcome="home_margin")
+within_n_sig = int((within["pvalue"] < 0.05).sum())
+assert _wnm["ci_high"] < 0 and within_n_sig == 1, "reword the M5 clause in @sec-nhl"
+```
+
+The NHL's within-2021 margin coefficient of `{python} sgn(pick(within, sport="nhl", outcome="home_margin")["coef"], 2)` in @tbl-within
+points the wrong way: more fans, worse home performance. Two caveats travel
+with it permanently. First, within-team fan access in 2021 is confounded with calendar time,
+because reopening was progressive, so "more fans" is very nearly "later in the season". Second, the
+fitted support runs 0 to `{python} num(pick(within, sport="nhl", outcome="home_margin")["crowd_max"], 3)` with a 99th percentile of `{python} num(pick(within, sport="nhl", outcome="home_margin")["crowd_p99"], 3)`, so a per-unit coefficient
+**extrapolates about `{python} times(1 / pick(within, sport="nhl", outcome="home_margin")["crowd_max"], 1)` beyond the data**.
+Its team-clustered 95% interval, `{python} civ(_wnm["ci_low"], _wnm["ci_high"], 2)` (p = `{python} dot(_wnm["pvalue"])`),
+excludes zero on the wrong side, and it is the only one of the `{python} words(len(within))` within-season fits
+to clear p < .05. We do not read it as evidence that fans hurt home teams. The fits share data
+and are not independent tests; the NHL win-probability fit points the same way but at
+p = `{python} dot(pick(within, sport="nhl", outcome="home_win")["pvalue"])`; and the first caveat
+applies directly, since the coefficient cannot separate more fans from later in the season.
+
+The instructive part is the sign opposition in the NHL. The raw means go the *other* way there
+(empty games `{python} sgn(pick(within, sport="nhl", outcome="home_margin")["raw_empty_mean"], 3)` against `{python} sgn(pick(within, sport="nhl", outcome="home_margin")["raw_fans_mean"], 3)` with fans, a gap of `{python} sgn(pick(within, sport="nhl", outcome="home_margin")["raw_fans_mean"] - pick(within, sport="nhl", outcome="home_margin")["raw_empty_mean"], 3)` goals), and
+the team-fixed-effects coefficient reverses it. MLB's raw margin gap runs the same direction but is
+only `{python} sgn(pick(within, sport="mlb", outcome="home_margin")["raw_fans_mean"] - pick(within, sport="mlb", outcome="home_margin")["raw_empty_mean"], 4)` runs, indistinguishable from no gap at all, and MLB's raw win-probability means do not reverse
+at all: `{python} num(pick(within, sport="mlb", outcome="home_win")["raw_empty_mean"], 3)` empty against `{python} num(pick(within, sport="mlb", outcome="home_win")["raw_fans_mean"], 3)` with fans, the same direction as the negative coefficient. The NFL's win-probability fit also reverses its raw
+gap, but its interval (`{python} civ(pick(within, sport="nfl", outcome="home_win")["ci_low"], pick(within, sport="nfl", outcome="home_win")["ci_high"], 2)`) is too wide to read. Only the NHL reverses on both
+outcomes; we note the MLB sign agreement in passing but do not lean on it. The reversal is consistent with within-season crowd variation being confounded with which teams
+reopened first and, within a team, with calendar time, which is why the headline estimate is
+identified between seasons rather than within them.
+
+## MLB: an identification problem before a power problem {#sec-mlb}
+
+```{python}
+#| label: leagues-mlb-vars
+#| include: false
+lg_mlb_margin = pick(twfe_all, sport="mlb", outcome="home_margin", sample="pooled")
+lg_mlb_win = pick(twfe_all, sport="mlb", outcome="home_win", sample="pooled")
+lg_mlb_overlap_all = pick(overlap, sport="mlb", scope="all_treated")["control_overlap"]
+lg_mlb_overlap_2020 = pick(overlap, sport="mlb", scope="2020")["control_overlap"]
+lg_mlb_overlap_2021 = pick(overlap, sport="mlb", scope="2021")["control_overlap"]
+lg_mlb_dose_2021 = pick(overlap, sport="mlb", scope="2021")["treated_mean"]
+lg_mlb_mde_unscaled_margin, lg_mlb_mde_rescaled_margin = _mde_ratios("mlb", "home_margin")
+lg_mlb_desc = pick(desc, sport="mlb", season="pooled_fullcrowd")
+# estimator (b)'s MLB intervals, pooled sample, both outcomes.
+lg_mlb_did_margin = pick(did_all, sport="mlb", outcome="home_margin", sample="pooled")
+lg_mlb_did_win = pick(did_all, sport="mlb", outcome="home_win", sample="pooled")
+assert lg_mlb_did_margin["ci_low"] < 0 < lg_mlb_did_margin["ci_high"] and lg_mlb_did_win["ci_low"] < 0 < lg_mlb_did_win["ci_high"], \
+    "estimator (b) MLB interval no longer spans zero; reword @sec-mlb part (1)"
+```
+
+MLB is the one league whose null needs a different explanation, and the explanation is mainly
+about identification. It has four parts.
+
+**(1) The estimate is indistinguishable from zero, not a reversal.** MLB's margin coefficient is `{python} sgn(lg_mlb_margin["coef"], 2)`
+with a 95% interval of `{python} civ(lg_mlb_margin["ci_low"], lg_mlb_margin["ci_high"], 3)` (p = `{python} dot(lg_mlb_margin["pvalue"], 3)`), and its win-probability coefficient is `{python} sgn(lg_mlb_win["coef"], 3)`,
+interval `{python} civ(lg_mlb_win["ci_low"], lg_mlb_win["ci_high"], 3)` (p = `{python} dot(lg_mlb_win["pvalue"], 3)`). Estimator (b) gives
+`{python} civ(lg_mlb_did_margin["ci_low"], lg_mlb_did_margin["ci_high"], 3)` (p = `{python} dot(lg_mlb_did_margin["pvalue"], 3)`) on margin and
+`{python} civ(lg_mlb_did_win["ci_low"], lg_mlb_did_win["ci_high"], 3)` (p = `{python} dot(lg_mlb_did_win["pvalue"], 3)`) on win probability. The negative
+sign is indistinguishable from noise. Nothing in this study supports
+the sentence "empty stadiums helped MLB home teams".
+
+**(2) The natural experiment barely applies to baseball.** From @tbl-dose: **`{python} pct(lg_mlb_overlap_all, 1)` of MLB's
+control-season games fall inside the treated seasons' dose range**, against under 0.6% for the
+other `{python} words(len(SPORTS) - 1)` leagues. For the NFL, NBA and NHL, the treatment is a near-disjoint empty-versus-full
+contrast. For MLB it is closer to an extension of ordinary demand
+variation, and MLB's coefficient rides partly on that ordinary variation, which is exactly
+the endogenous channel the design exists to avoid.
+
+The contamination is entirely 2021. MLB's 2020 season overlaps the control distribution `{python} pct(lg_mlb_overlap_2020, 2)` of
+the time, no more than the NFL's, while 2021 overlaps `{python} pct(lg_mlb_overlap_2021, 1)` at a mean dose of `{python} num(lg_mlb_dose_2021, 3)`. The obvious
+move is to define MLB's treatment as 2020 only. **We do not**: the paper keeps the 2020+2021
+definition throughout, because the trade runs in both directions. 2020 buys dose cleanliness and
+pays for it in confounding. The 60-game 2020 season introduced the extra-innings ghost runner, the
+universal designated hitter, seven-inning doubleheaders and a regionalized schedule, several of
+which push home advantage in the home team's direction and none of which is a crowd effect. 2021
+buys a clean, full-length season and pays for it in the dose overlap documented above. **No MLB
+definition is clean on both margins.**
+
+```{python}
+#| label: tbl-mlbsplit
+#| tbl-cap: "MLB treated-season split. **The sign convention here is not the paper's elsewhere**: these are raw treated-year level indicators, unnegated, so a *positive* value implies a *negative* crowd effect. Both years enter one regression (n = 12,871); each absorbs the other if omitted."
+#| output: asis
+rows = []
+for oc, lab, d in [("home_margin", "Margin", 4), ("home_win", "Win prob.", 4)]:
+    r = {"Outcome": lab}
+    for y in [2020, 2021]:
+        x = pick(mlbsplit, outcome=oc, treated_year=y)
+        r[str(y)] = f"{x['coef']:+.{d}f} ({x['se']:.{d}f}), p={x['pvalue']:.2f}"
+    rows.append(r)
+display(md(pd.DataFrame(rows)))
+```
+
+The split does not resolve the question. Both treated years come out slightly positive on the
+year-indicator level, all with p > .29, which **does not confirm** a 2020-rule-artifact story,
+and could not have separated rule changes from crowd effects even had it come out cleanly. We
+report it as inconclusive because that is what it is.
+
+**(3) Run margin is the noisiest outcome in the study relative to its own effect.** MLB's
+minimum detectable effect on margin is `{python} times(lg_mlb_mde_unscaled_margin, 1)` its entire home advantage at per-unit scaling (`{python} times(lg_mlb_mde_rescaled_margin, 1)`
+rescaled), the worst cell in @tbl-mde by a wide margin. Baseball's descriptive margin home
+advantage is `{python} sgn(lg_mlb_desc["mean_home_margin"], 3)` runs with a standard error of `{python} num(lg_mlb_desc["home_margin_se"], 3)`. There is essentially no signal there to
+detect.
+
+**(4) Baseball's known home-advantage mechanisms are largely crowd-independent.** The home team
+bats last; that survives an empty stadium untouched. Park familiarity survives it too: the
+particular carry of the air, the dimensions, the mound, the sightlines from the box. The channel
+through which the published literature most credibly links crowds to outcomes is officiating bias
+under crowd pressure [@leitner2021referees; @plosone_nhl_penalties]. Home-plate umpires do favor
+the home side on called pitches [@flannagan2024umpire], and one recent study finds that this bias
+rises with ballpark occupancy and is indistinguishable from zero in the fan-free 2020 season
+[@saiegh2026umpire]. But that bias is worth hundredths of a run per game, its implied effect on win
+probability is small and imprecisely estimated, and peer-reviewed studies of 2020 find no
+significant change in overall home advantage [@losak2021baseball; @chiu2022mlb]. Baseball's total home advantage is also the smallest of the
+`{python} words(len(SPORTS))` leagues studied here on win percentage. A league whose home advantage is small, whose known mechanisms are
+mostly crowd-independent, and whose outcome measure is the noisiest, is the league where a null
+was least surprising.
+
+The claim we can defend for baseball is **"no detectable MLB crowd effect."** The claim we cannot
+defend, and do not make, is "crowds do not matter in baseball."
+
+# Robustness and sensitivity {#sec-robust}
+
+## The restricted sample
+
+Estimator (a) was also refitted on a restricted sample, the treated season(s) plus their
+immediate neighbors, as a check on whether distant control seasons were driving the result
+(estimator (b)'s restricted-sample values are in `did_*.csv`).
+
+```{python}
+#| label: tbl-restricted
+#| tbl-cap: "Pooled versus restricted estimation windows."
+#| output: asis
+from src.models.twfe import _restricted_seasons
+rows = []
+_se_ratio = []
+_away_cells = []
+rob_collapse_count = 0
+for s in SPORTS:
+    for oc, lab, d in [("home_margin", "Margin", 3), ("home_win", "Win prob.", 4)]:
+        p = pick(twfe_all, sport=s, outcome=oc, sample="pooled")
+        r = pick(twfe_all, sport=s, outcome=oc, sample="restricted")
+        rows.append({
+            "League": UP[s], "Outcome": lab,
+            "Pooled": f"{p['coef']:+.{d}f} ({p['se']:.{d}f})",
+            "Restricted": f"{r['coef']:+.{d}f} ({r['se']:.{d}f})",
+            "n pooled": int(p["n_obs"]), "n restricted": int(r["n_obs"]),
+        })
+        if abs(r["coef"]) < abs(p["coef"]):
+            rob_collapse_count += 1
+        else:
+            _away_cells.append((s, oc))
+        _se_ratio.append(r["se"] / p["se"] - 1)
+        if s == "nfl" and oc == "home_margin":
+            rob_restricted_nfl_margin = r["coef"]
+rob_n_cells = len(SPORTS) * 2
+rob_se_ratio_min, rob_se_ratio_max = min(_se_ratio), max(_se_ratio)
+# the one cell that moves away from zero on the restricted
+# window is no longer NHL margin (which now moves toward zero) but NBA win probability. Name it
+# live instead of hardcoding which cell it is.
+assert _away_cells == [("nba", "home_win")], \
+    "the restricted-window 'moves away from zero' cell is no longer NBA win probability; reword @sec-robust and @tbl-specsummary"
+rob_away_cell_label = f"{UP[_away_cells[0][0]]} {_LAB[_away_cells[0][1]]}"
+rob_ctrl_kept_share = {}
+for s in SPORTS:
+    d = _prep(pd.read_parquet(ROOT / "data" / "processed" / f"{s}.parquet"))
+    ctrl = d[~d["season"].isin(TREATED[s])]
+    kept = ctrl[ctrl["season"].isin(_restricted_seasons(TREATED[s]))]
+    rob_ctrl_kept_share[s] = len(kept) / len(ctrl)
+assert max(rob_ctrl_kept_share.values()) < 0.5, \
+    "restricted window keeps >=half the control games in some league; reword @sec-robust"
+display(md(pd.DataFrame(rows)))
+```
+
+On the restricted window
+`{python} words(rob_collapse_count)` of `{python} words(rob_n_cells)` estimates move toward zero,
+and the NFL's margin estimate falls from `{python} sgn(strat_nfl_coef_shipped, 2)` to `{python} sgn(rob_restricted_nfl_margin, 2)`; `{python} rob_away_cell_label`
+is the one that moves away from zero. Two readings are available and we cannot adjudicate between
+them with these data. Either the pooled estimates are being carried by distant control seasons
+(for the NFL, @sec-loso shows this is partly true of 2018 specifically), or the restricted window
+discards most of the control mass and most of the leverage the linear trend needs, leaving a
+noisier estimate that has drifted toward zero. The standard errors do not separate these: they move by only `{python} pct(rob_se_ratio_min, 1)`–`{python} pct(rob_se_ratio_max, 1)`
+despite the restricted window discarding more than half the control games in every league,
+consistent with the treated season's own sampling error dominating either way (cf. @sec-floor).
+
+What we can say is that the restricted-sample result is consistent with the paper's thesis under
+either reading: this design does not have the resolution to distinguish these hypotheses.
+
+## The betting spread is a bad control, not a fragility test
+
+```{python}
+#| label: rob-spread-vars
+#| include: false
+_nfl_raw = pd.read_parquet(ROOT / "data" / "processed" / "nfl.parquet")
+_rob_spread_margin = fit(_nfl_raw, "home_margin", "pooled", TREATED["nfl"], extra_controls=["closing_spread"])
+_rob_spread_win = fit(_nfl_raw, "home_win", "pooled", TREATED["nfl"], extra_controls=["closing_spread"])
+rob_spread_margin_coef = _rob_spread_margin["coef"]
+rob_spread_margin_se = _rob_spread_margin["se"]
+rob_spread_win_coef = _rob_spread_win["coef"]
+```
+
+Adding the NFL closing spread as a control attenuates the margin coefficient from `{python} sgn(strat_nfl_coef_shipped, 2)` to
+**`{python} sgn(rob_spread_margin_coef, 2)`** (SE `{python} num(rob_spread_margin_se, 2)`) and the win-probability coefficient from `{python} sgn(res_nfl_winprob_pp / 100, 3)` to `{python} sgn(rob_spread_win_coef, 3)`. A naive reading is
+that the crowd effect does not survive controlling for market expectations.
+
+That reading is wrong, and the reason is a textbook one. **The closing spread is post-treatment.**
+It is set by a market that knows the stadium will be empty and has already priced in a reduced
+home advantage. Conditioning on it is conditioning on a variable that contains the treatment
+effect, absorbing at least part of the quantity we are estimating, so the attenuation cannot be
+read as evidence against it. The spread is reported here as a diagnostic and is excluded from the main
+specification for that reason. It is also NFL-only, so it could never have been a sport-blind
+main-model control.
+
+## The playoff exclusion, and descriptive playoff home advantage {#sec-playoffs}
+
+Playoffs are excluded from every model in this paper. In the NFL the higher seed hosts every
+playoff game before the neutral-site Super Bowl; in the NBA, NHL and MLB it hosts the first game
+of every series and any deciding game, and every game of MLB's post-2022 Wild Card round. Playoff home advantage therefore bundles the
+crowd, travel and familiarity channels with a seeding asymmetry, and seeding tracks team quality
+in a way regular-season home advantage does not. Adding playoff games would change measured
+home advantage for reasons unrelated to crowds, without adding identification.
+
+For completeness, the descriptive playoff picture:
+
+```{python}
+#| label: tbl-playoff
+#| tbl-cap: "Descriptive playoff home advantage, computed inline. Seasons with no clean playoff games are absent rather than reported as zero-game rows: the NBA's and NHL's 2020 postseasons were played entirely in bubbles and are excluded in full. These numbers blend home advantage with seeding quality and should be read with that caveat."
+#| output: asis
+from src.viz.descriptive import summarize
+rows = []
+for s in SPORTS:
+    p = pd.read_parquet(ROOT / "data" / "processed" / f"{s}.parquet")
+    t = summarize(p, playoffs=True)
+    full = t[t["season"] == "pooled_fullcrowd"].iloc[0]
+    per = t[t["season"] != "pooled_fullcrowd"]
+    tr = per[per["covid_era"]]
+    rows.append({
+        "League": UP[s],
+        "n (full-crowd playoffs)": int(full["n_games"]),
+        "Playoff home win %": f"{full['home_win_pct']:.3f} ({full['home_win_se']:.3f})",
+        "Playoff home margin": f"{full['mean_home_margin']:+.3f} ({full['home_margin_se']:.3f})",
+        "Regular-season home win %": f"{pick(desc, sport=s, season='pooled_fullcrowd')['home_win_pct']:.3f}",
+        "Restricted-season playoff win %": " / ".join(f"{v:.3f}" for v in tr["home_win_pct"]) or "—",
+    })
+    _reg_win = pick(desc, sport=s, season="pooled_fullcrowd")["home_win_pct"]
+    if s == "nfl":
+        rob_playoff_nfl_win, rob_playoff_nfl_reg_win = full["home_win_pct"], _reg_win
+    elif s == "nba":
+        rob_playoff_nba_win, rob_playoff_nba_reg_win = full["home_win_pct"], _reg_win
+    elif s == "nhl":
+        rob_playoff_nhl_win, rob_playoff_nhl_reg_win = full["home_win_pct"], _reg_win
+    elif s == "mlb":
+        rob_playoff_mlb_win, rob_playoff_mlb_margin, rob_playoff_mlb_n = \
+            full["home_win_pct"], full["mean_home_margin"], full["n_games"]
+        rob_playoff_mlb_win_se, rob_playoff_mlb_reg_win = full["home_win_se"], _reg_win
+assert abs(rob_playoff_mlb_win - 0.5) / rob_playoff_mlb_win_se < 1.96, \
+    "MLB playoff win % no longer within sampling noise of .500; reword @sec-playoffs"
+assert abs(rob_playoff_mlb_win - rob_playoff_mlb_reg_win) / rob_playoff_mlb_win_se < 1.96, \
+    "MLB playoff win % no longer within sampling noise of the regular-season rate; reword @sec-playoffs"
+display(md(pd.DataFrame(rows)))
+```
+
+Playoff home advantage is larger than regular-season home advantage in the NFL (`{python} dot(rob_playoff_nfl_win)` versus `{python} dot(rob_playoff_nfl_reg_win)`)
+and the NBA (`{python} dot(rob_playoff_nba_win)` versus `{python} dot(rob_playoff_nba_reg_win)`), marginally *lower* in the NHL (`{python} dot(rob_playoff_nhl_win)` versus `{python} dot(rob_playoff_nhl_reg_win)`), and
+*inverted* in MLB, where the home team wins `{python} pct(rob_playoff_mlb_win, 1)` of clean playoff games and concedes `{python} num(abs(rob_playoff_mlb_margin), 2)` runs
+per game on average across `{python} thou(rob_playoff_mlb_n)` games, a gap that is within sampling noise of both .500 and the
+regular-season rate. We resist the temptation to read anything causal into it.
+The seeding asymmetry that may inflate the NFL and NBA numbers is present in baseball too; the
+samples are small; and MLB's playoff format changed within the window. It is reported because
+excluding a slice of data obliges one to show what was excluded.
+
+## Zero-attendance reporting artifacts {#sec-zero}
+
+```{python}
+#| label: rob-zero-vars
+#| include: false
+_z = zsens.assign(shift_se=(zsens["coef_post"] - zsens["coef_pre"]).abs() / zsens["se_post"])
+_zmax = _z.loc[_z["shift_se"].idxmax()]
+rob_zero_max_shift_se = _zmax["shift_se"]
+rob_zero_max_label = f"{UP[_zmax['sport']]} {_LAB[_zmax['outcome']]}"
+rob_zero_max_pre, rob_zero_max_post = _zmax["coef_pre"], _zmax["coef_post"]
+rob_zero_dp = 2 if _zmax["outcome"] == "home_margin" else 3
+
+def _excl_set(tw, ov):
+    out = set()
+    for s in SPORTS:
+        for oc in ("home_margin", "home_win"):
+            r = tw[(tw["sport"] == s) & (tw["outcome"] == oc) & (tw["sample"] == "pooled")].iloc[0]
+            cm = ov[(ov["sport"] == s) & (ov["scope"] == "all_treated")]["control_mean"].iloc[0]
+            h = _intro_hfa[s][oc]
+            if all(r["ci_high"] < x or r["ci_low"] > x for x in (h, h / cm)):
+                out.add((s, oc))
+    return out
+
+_pre = T / "pre_zero_fix"
+_excl_pre = _excl_set(pd.concat([pd.read_csv(_pre / f"twfe_{s}.csv") for s in SPORTS]),
+                      pd.read_csv(_pre / "dose_overlap.csv"))
+
+# Baseline for the zero-artifact fix's OWN effect is "before the reopening-zeros fix" on both
+# sides (pre_zero_fix vs pre_reopen_fix), not vs. today's fully-corrected _excl_cells — the
+# reopening fix (below) is a second, later correction that moves this set on its own.
+_pre_reopen = T / "pre_reopen_fix"
+_excl_pre_reopen = _excl_set(pd.concat([pd.read_csv(_pre_reopen / f"twfe_{s}.csv") for s in SPORTS]),
+                             pd.read_csv(_pre_reopen / "dose_overlap.csv"))
+assert _excl_pre == _excl_pre_reopen, "full-advantage exclusion cells differ pre/post zero-artifact correction; reword @sec-zero"
+rob_zero_excl_count = len(_excl_pre_reopen)
+# the prose names these cells.
+assert _excl_pre_reopen == {("mlb", "home_win"), ("nba", "home_win"), ("nhl", "home_margin")}, \
+    "pre-reopen exclusion cells no longer MLB win, NBA win, NHL margin; reword @sec-zero"
+```
+
+Coding the `{python} thou(data_zero_nulled_total)` zero-attendance reports as empty stadiums instead, as every estimate did before
+the correction, moves no pooled dose-response coefficient by more than `{python} num(rob_zero_max_shift_se, 2)` of its standard
+error. The largest move is `{python} rob_zero_max_label` (`{python} sgn(rob_zero_max_post, rob_zero_dp)` with the zeros as missing, `{python} sgn(rob_zero_max_pre, rob_zero_dp)` with them as empty), and the same `{python} words(rob_zero_excl_count)` cells
+(MLB win probability, NBA win probability, NHL margin) exclude a full-advantage effect either way (both before the reopening-zeros correction below). Both versions are in `zero_attendance_sensitivity.csv`.
+
+```{python}
+#| label: rob-reopen-vars
+#| include: false
+_rz = rsens.assign(shift_se=(rsens["coef_post"] - rsens["coef_pre"]).abs() / rsens["se_post"])
+_rzmax = _rz.loc[_rz["shift_se"].idxmax()]
+rob_reopen_max_shift_se = _rzmax["shift_se"]
+rob_reopen_max_label = f"{UP[_rzmax['sport']]} {_LAB[_rzmax['outcome']]}"
+rob_reopen_max_pre, rob_reopen_max_post = _rzmax["coef_pre"], _rzmax["coef_post"]
+rob_reopen_dp = 2 if _rzmax["outcome"] == "home_margin" else 3
+
+_excl_dropped = _excl_pre_reopen - set(_excl_cells)
+_excl_added = set(_excl_cells) - _excl_pre_reopen
+assert _excl_dropped == {("nhl", "home_margin")} and not _excl_added, \
+    "reopening-fix exclusion-set change no longer matches the described NHL-margin drop; reword @sec-zero"
+rob_reopen_dropped_label = f"{UP['nhl']} {_LAB['home_margin']}"
+```
+
+Correcting the reopening-window zeros on top of that moves no pooled coefficient by more than
+`{python} num(rob_reopen_max_shift_se, 2)` of its standard error. The largest move is `{python} rob_reopen_max_label`
+(`{python} sgn(rob_reopen_max_post, rob_reopen_dp)` with the post-fix rule, `{python} sgn(rob_reopen_max_pre, rob_reopen_dp)` with the reopening zeros
+still coded as empty). This one does change which intervals exclude a full-advantage effect: the
+`{python} rob_reopen_dropped_label` interval joined the other `{python} words(len(_excl_pre_reopen) - 1)` in excluding it before
+this correction and no longer does, leaving the `{python} words(intro_excl_count)` cells named in @sec-intro
+(`{python} intro_excl_cells_str`). Both versions are in `reopen_zero_sensitivity.csv`.
+
+```{python}
+#| label: rob-reopen-evidence-vars
+#| include: false
+from src.models.twfe import fit
+
+_nhl_panel = pd.read_parquet(ROOT / "data" / "processed" / "nhl.parquet")
+_nhl_restore_mask = (_nhl_panel["home_team"].isin(["NSH", "STL"])
+                     & _nhl_panel["season"].isin(_sports_cfg["nhl"]["treated_seasons"])
+                     & _nhl_panel["crowd_pct"].isna())
+_nhl_restored = _nhl_panel.copy()
+_nhl_restored.loc[_nhl_restore_mask, "crowd_pct"] = 0.0
+rob_reopen_nsh_stl_n = int(_nhl_restore_mask.sum())
+_nhl_fit_margin_shipped = fit(_nhl_panel, "home_margin", "pooled", _sports_cfg["nhl"]["treated_seasons"])
+_nhl_fit_margin_restored = fit(_nhl_restored, "home_margin", "pooled", _sports_cfg["nhl"]["treated_seasons"])
+_nhl_fit_win_shipped = fit(_nhl_panel, "home_win", "pooled", _sports_cfg["nhl"]["treated_seasons"])
+_nhl_fit_win_restored = fit(_nhl_restored, "home_win", "pooled", _sports_cfg["nhl"]["treated_seasons"])
+rob_reopen_nsh_stl_dmargin = abs(_nhl_fit_margin_restored["coef"] - _nhl_fit_margin_shipped["coef"])
+rob_reopen_nsh_stl_dwin = abs(_nhl_fit_win_restored["coef"] - _nhl_fit_win_shipped["coef"])
+assert _nhl_fit_margin_restored["ci_high"] > _intro_hfa["nhl"]["home_margin"], \
+    "NSH/STL restored now excludes full-advantage NHL margin; reword @sec-zero"
+
+_nba_panel = pd.read_parquet(ROOT / "data" / "processed" / "nba.parquet")
+_nba_restore_mask = (_nba_panel["home_team"].isin(["MIA", "IND", "SAC"])
+                     & _nba_panel["season"].isin(_sports_cfg["nba"]["treated_seasons"])
+                     & _nba_panel["crowd_pct"].isna())
+_nba_restored = _nba_panel.copy()
+_nba_restored.loc[_nba_restore_mask, "crowd_pct"] = 0.0
+rob_reopen_nba_best_n = int(_nba_restore_mask.sum())
+rob_reopen_nba_best_restored_win = fit(_nba_restored, "home_win", "pooled",
+                                        _sports_cfg["nba"]["treated_seasons"])["coef"]
+```
+
+The two NHL teams introduced in @sec-dose, Nashville and St. Louis, are also this fix's weakest
+evidence, and it is worth saying plainly where that evidence sits relative to the numbers. Restoring
+their `{python} rob_reopen_nsh_stl_n`
+zeros to real moves NHL by `{python} num(rob_reopen_nsh_stl_dmargin, 3)` on margin and `{python} num(rob_reopen_nsh_stl_dwin, 3)`
+on win probability, and does not restore the dropped NHL-margin exclusion either way. The NBA headline
+shift is the opposite case: restoring `{python} rob_reopen_nba_best_n` games from Miami, Indiana and
+Sacramento (the three teams with a named, dated local-news source) returns NBA win probability to
+`{python} sgn(rob_reopen_nba_best_restored_win, 4)`, essentially the entire shift this correction produced.
+The fix's weakest evidence is therefore immaterial to every estimate, and its strongest evidence is
+what moved the numbers.
+
+Detroit's sourced first-fans date is kept at 2021-03-10 even though one fan account describes earlier
+public attendance in January 2021; crediting that account would reclassify 12 more games. And the
+audit did not exhaustively check whether a nonzero ESPN attendance figure from a family- or
+staff-only game could set a first-fans date too early for some team.
+
+## Trend specification {#sec-trend}
+
+```{python}
+#| label: rob-trend-spec-vars
+#| include: false
+import statsmodels.formula.api as smf
+rob_trend_nfl_win_quad = pick(trend, sport="nfl", outcome="home_win", trend="quadratic")["coef"]
+rob_trend_nfl_margin_quad = pick(trend, sport="nfl", outcome="home_margin", trend="quadratic")["coef"]
+rob_trend_nba_win_quad = pick(trend, sport="nba", outcome="home_win", trend="quadratic")["coef"]
+rob_trend_mlb_win_quad = pick(trend, sport="mlb", outcome="home_win", trend="quadratic")["coef"]
+rob_trend_mlb_win_quad_dse = (
+    (rob_trend_mlb_win_quad - pick(trend, sport="mlb", outcome="home_win", trend="linear")["coef"])
+    / pick(trend, sport="mlb", outcome="home_win", trend="linear")["se"])
+rob_quadr2 = {}
+for s in SPORTS:
+    _p = pd.read_parquet(ROOT / "data" / "processed" / f"{s}.parquet")
+    _d = _prep(_p)[["crowd_pct", "season", "home_team"]].dropna().copy()
+    _d["t"] = _d["season"] - _d["season"].min()
+    rob_quadr2[s] = smf.ols("crowd_pct ~ C(home_team) + t + I(t**2)", data=_d).fit().rsquared
+assert rob_quadr2["nfl"] < strat_r2_nfl - 0.5, \
+    "NFL quadratic-trend R² no longer clearly below the season-FE R²; reword @sec-robust"
+
+# C1 fix: the quadratic trend is not a second, independent fragility -- it reproduces the
+# drop-2018 result (@sec-loso). Check live: with 2018 dropped, does the quadratic still move
+# either NFL outcome by much relative to the linear-trend/drop-2018 fit?
+_nfl_drop2018 = _nfl_raw[_nfl_raw["season"] != 2018]
+rob_trend_drop2018_max = max(
+    abs(fit(_nfl_drop2018, oc, "pooled", TREATED["nfl"], trend="quadratic")["coef"]
+        - fit(_nfl_drop2018, oc, "pooled", TREATED["nfl"], trend="linear")["coef"])
+    / fit(_nfl_drop2018, oc, "pooled", TREATED["nfl"], trend="linear")["se"]
+    for oc in ("home_margin", "home_win"))
+assert rob_trend_drop2018_max < 0.25, \
+    "quadratic no longer close to the drop-2018 linear result; reword @sec-trend"
+```
+
+A quadratic season trend moves the study's largest estimate. Under it
+the NFL win-probability estimate goes from `{python} sgn(res_nfl_winprob_pp / 100, 3)` to `{python} sgn(rob_trend_nfl_win_quad, 3)`
+and the margin estimate from `{python} sgn(strat_nfl_coef_shipped, 2)` to `{python} sgn(rob_trend_nfl_margin_quad, 2)`, and NBA win
+probability falls to about zero (`{python} sgn(rob_trend_nba_win_quad, 4)`); MLB win probability moves
+`{python} sgn(rob_trend_mlb_win_quad_dse, 2)` SE (`{python} sgn(lg_mlb_win["coef"], 3)` → `{python} sgn(rob_trend_mlb_win_quad, 3)`). Unlike full season fixed effects, a quadratic
+trend is not near-collinear with the dose (R² of `crowd_pct` on team fixed effects and a quadratic
+trend: NFL `{python} dot(rob_quadr2["nfl"])`, versus `{python} dot(strat_r2_nfl)` with full season dummies), so this cannot be
+dismissed the same way. This is the same fragility as @sec-loso's 2018 result, seen through the
+trend rather than the sample: with 2018 dropped, the quadratic moves neither NFL estimate by more
+than `{python} num(rob_trend_drop2018_max, 2)` SE.
+
+## Summary of specification choices tested
+
+```{python}
+#| label: rob-specsummary-vars
+#| include: false
+rob_trend_none_max = max(
+    abs(pick(trend, sport=s, outcome=oc, trend="none")["coef"]
+        - pick(trend, sport=s, outcome=oc, trend="linear")["coef"])
+    / pick(trend, sport=s, outcome=oc, trend="linear")["se"]
+    for s in SPORTS for oc in ("home_margin", "home_win")
+)
+rob_trend_nfl_win_quad_dse = (
+    (rob_trend_nfl_win_quad - pick(trend, sport="nfl", outcome="home_win", trend="linear")["coef"])
+    / pick(trend, sport="nfl", outcome="home_win", trend="linear")["se"])
+rob_trend_nfl_margin_quad_dse = (
+    (rob_trend_nfl_margin_quad - pick(trend, sport="nfl", outcome="home_margin", trend="linear")["coef"])
+    / pick(trend, sport="nfl", outcome="home_margin", trend="linear")["se"])
+rob_travel_delta_win = pick(travel, outcome="home_win")["delta"]
+rob_within_nhl_extrap = 1 / pick(within, sport="nhl", outcome="home_margin")["crowd_max"]
+rob_loso_nfl_2018_margin_dse = pick(loso, sport="nfl", outcome="home_margin", dropped_season=2018)["delta_over_se_base"]
+rob_loso_nba_2023_win_dse = pick(loso, sport="nba", outcome="home_win", dropped_season=2023)["delta_over_se_base"]
+```
+
+| Choice | Alternative tested | Effect on the headline |
+|---|---|---|
+| Linear season trend | None; quadratic | Small with no trend (≤`{python} num(rob_trend_none_max, 2)` SE, every league); a quadratic moves NFL win `{python} sgn(rob_trend_nfl_win_quad_dse, 2)` SE (`{python} sgn(res_nfl_winprob_pp / 100, 3)` → `{python} sgn(rob_trend_nfl_win_quad, 3)`) and NFL margin `{python} sgn(rob_trend_nfl_margin_quad_dse, 2)` SE (@tbl-trend for the NHL; @sec-trend) |
+| Team FE only | Two-way (full season FE) | Signs flip in the NFL and NBA; NHL grows, MLB shrinks toward zero; NFL margin `{python} sgn(strat_nfl_coef_shipped, 2)` → `{python} sgn(strat_nfl_coef_seasonfe, 2)` (@tbl-sfe) |
+| Pooled window | Treated ± adjacent seasons | `{python} words(rob_collapse_count).capitalize()` of `{python} words(rob_n_cells)` move toward zero; `{python} rob_away_cell_label` moves away from zero (@tbl-restricted) |
+| `{python} words(intro_n_seasons).capitalize()`-season panel | Drop each untreated season | NFL−2018 win `{python} sgn(lg_loso_nfl_2018_win_delta_se, 2)` SE (margin `{python} sgn(rob_loso_nfl_2018_margin_dse, 2)` SE) (@tbl-loso); NBA win flips sign dropping 2023 (`{python} sgn(rob_loso_nba_2023_win_dse, 2)` SE) (@sec-loso; `leave_one_season_out.csv`) |
+| Controls: Elo, rest, travel | Drop travel (NHL) | `{python} sgn(rob_travel_delta_win, 4)` win probability, same n |
+| No spread control | Add NFL closing spread | `{python} sgn(strat_nfl_coef_shipped, 2)` → `{python} sgn(rob_spread_margin_coef, 2)`, and post-treatment by construction |
+| Between-season identification | Within-treated-season dose | NHL: wrong-signed, extrapolating `{python} times(rob_within_nhl_extrap, 1)` beyond support (@tbl-within) |
+| Zero attendance outside restriction windows as missing | Coded as empty (0) | ≤ `{python} num(rob_zero_max_shift_se, 2)` SE in every cell (@sec-zero) |
+| Zeros after a team readmitted fans as missing | Coded as empty (0) | ≤ `{python} num(rob_reopen_max_shift_se, 2)` SE in every cell (@sec-zero) |
+| Team-clustered SEs | Randomization inference | No p below `{python} dot(res_ri_pvalue_min, 3)`, floor `{python} dot(res_ri_floor_min, 3)` (@tbl-ri) |
+
+: Specification alternatives tested against the headline, and where each is reported. {#tbl-specsummary}
+
+# Relation to the published literature {#sec-lit}
+
+## What prior work found
+
+The ghost-game literature is **predominantly, but not unanimously, in favor of a crowd effect on
+match results**. A systematic review of 26 primary studies of football (20
+peer-reviewed) reports a vote count of six finding no change, two a slightly
+reduced home advantage, eight a reduced home advantage and ten a strongly reduced home advantage,
+with "not a single study that found an *increased* home advantage in ghost games"
+[@systematicreview_ghostgames]. A separate review of 28 articles splits its sample by outcome type
+rather than by direction and records dissenting match-outcome findings, including a Brazilian
+analysis finding *fewer* home wins in the spectator-attended 2019 season than in the
+spectator-free 2020 [@wang2023crowdreview].
+
+Three nulls, one of them (Schank's) an unrefereed working paper, deserve naming.
+@schank2024bundesliga, which the authors describe as the first study to cover all three
+regulated Bundesliga seasons, finds home advantage in the near-complete spectator-ban season
+2020/21 "very close to" the pre-COVID 2018/19 season, although it vanished in the 2019/20 ghost
+games. The same study finds a non-monotone dose relationship in 2021/22 (the authors call it
+U-shaped), with the largest home advantage at *medium* stadium utilization. @higgs2021nba report no
+meaningful MLB change. @gong2022nbafouls finds no crowd effect on NBA referee home bias in clutch
+time across 1,679 games and 30,695 plays.
+
+A commonly cited channel in American football, crowd noise drowning out the visiting offense's
+snap count, has been tested on NFL play-by-play for 2018–2020.
+@farnell2023nflpenalties finds that "crowds play no role in an offense committing penalties at the
+line of scrimmage, neither for the home nor the away team." The crowd effect it does find runs
+through the other side of the ball: home defenses commit fewer pre-snap penalties when stadiums are
+full, which the author reads as noise drowning out the visiting quarterback's cadence. The author
+also notes that other COVID-era changes, such as altered practice regimes, could produce the same
+pattern. From 1989 until 2007 the NFL enforced a rule that let referees penalize teams for crowd
+noise [@farnell2023nflpenalties, n. 2].
+
+In college football, @mcmahon2024cfb find that larger crowds lowered away-team scoring before 2020
+and attribute this to noise, because the association is no longer significant in 2020, when
+stadiums were allowed to pipe in artificial crowd noise. Their 2020 estimate is larger in magnitude
+but far less precise, so the evidence is a loss of significance rather than a measured decline, and
+the authors themselves caution against reading it too strongly as causal. In baseball,
+@saiegh2026umpire find that home-favoring umpire bias rises with ballpark occupancy and is
+indistinguishable from zero in the fan-free 2020 season, though the bias is worth only hundredths
+of a run per game. Those authors decline to read their own instrumented estimate as causal, and we
+do not read it that way either.
+
+The effect sizes also show a pattern that bears on our own window: **the strongest
+reductions are concentrated in the first, short, dramatic ghost-game window** (the last nine
+Bundesliga matchdays of 2019/20, the European ghost games of spring 2020). Longer-window results
+are weaker, which @schank2024bundesliga reads as teams becoming accustomed to empty stadiums. Our
+estimation window is at least one *full* restricted season per league, which is the longer-window case.
+
+## Where our estimates sit
+
+```{python}
+#| label: lit-nba-vars
+#| include: false
+from src.models.twfe import _prep
+_lit_nba_clean = _prep(_nba_raw)
+lit_nba_margin = pick(twfe_all, sport="nba", outcome="home_margin", sample="pooled")
+
+_lit_nba_ov = pick(overlap, sport="nba", scope="all_treated")
+lit_nba_control_mean = _lit_nba_ov["control_mean"]
+lit_nba_treated_mean = _lit_nba_ov["treated_mean"]
+lit_nba_dose_gap = lit_nba_control_mean - lit_nba_treated_mean
+lit_nba_zero_share = _lit_nba_ov["treated_share_zero"]
+
+# Q9 fix: Ganz & Allsop's 1.69 is a raw within-2020-21 fans-vs-no-fans gap, not a causal
+# estimate in our units. Their own evidence (categorical fan-count bins) reads as a presence
+# effect rather than a size effect (primary source pp. 37, 41-43), so we map their uninstrumented
+# any-fans-present FE estimate through our dose data via presence share, not raw dose.
+GANZ_FE_PRESENCE, GANZ_FE_PRESENCE_SE = 4.527, 2.074
+_lnc = _lit_nba_clean.dropna(subset=["crowd_pct", "home_margin"])
+_lnc_treated = _lnc["season"].isin(TREATED["nba"])
+lit_nba_presence_control = (_lnc.loc[~_lnc_treated, "crowd_pct"] > 0).mean()
+lit_nba_presence_treated = (_lnc.loc[_lnc_treated, "crowd_pct"] > 0).mean()
+_presence_gap = lit_nba_presence_control - lit_nba_presence_treated
+lit_nba_implied = GANZ_FE_PRESENCE * _presence_gap / lit_nba_dose_gap
+lit_nba_implied_ci_low = (GANZ_FE_PRESENCE - 1.96 * GANZ_FE_PRESENCE_SE) * _presence_gap / lit_nba_dose_gap
+lit_nba_implied_ci_high = (GANZ_FE_PRESENCE + 1.96 * GANZ_FE_PRESENCE_SE) * _presence_gap / lit_nba_dose_gap
+lit_nba_implied_ratio = lit_nba_margin["coef"] / lit_nba_implied
+
+_lit_nba_margin_se = lit_nba_margin["se"]
+def _lit_power(effect, se):
+    z = effect / se
+    return _phi(z - 1.96) + _phi(-z - 1.96)
+lit_nba_implied_power = _lit_power(lit_nba_implied, _lit_nba_margin_se)
+
+# N1: Ganz & Allsop drop IND/MIA/SAC for reporting zero after reopening; our pipeline nulls those
+# artifact zeros instead (@sec-zero), and _lnc drops them. Counting the nulled 2021 games as
+# fans-present is the other defensible reading, so report it beside the shipped one.
+_lnc_all = _lit_nba_clean.dropna(subset=["home_margin"])
+_lnc_all_treated = _lnc_all["season"].isin(TREATED["nba"])
+_present_all = (_lnc_all["crowd_pct"] > 0) | _lnc_all["crowd_pct"].isna()
+lit_nba_null_n = int(_lnc_all.loc[_lnc_all_treated, "crowd_pct"].isna().sum())
+lit_nba_implied_nullpresent = GANZ_FE_PRESENCE * (
+    _present_all[~_lnc_all_treated].mean() - _present_all[_lnc_all_treated].mean()) / lit_nba_dose_gap
+
+_ci_lo, _ci_hi = lit_nba_margin["ci_low"], lit_nba_margin["ci_high"]
+for _imp in (lit_nba_implied, lit_nba_implied_nullpresent):
+    assert _ci_lo + 0.85 * (_ci_hi - _ci_lo) < _imp < _ci_hi, \
+        "Ganz presence mapping left the upper edge of our NBA interval; reword @sec-lit, abstract, intro, conclusion"
+    assert 0.28 < lit_nba_margin["coef"] / _imp < 0.38, \
+        "our NBA estimate is no longer about a third of the Ganz mapping; reword @sec-lit and intro"
+```
+
+The closest comparison available is NBA points margin. @ganz2024nbafans report the
++2.13/+0.44 pair as raw average home-court-advantage points within the 2020–21 season, with fans
+present and without; they describe the difference as only marginally significant (p = .09). (This
+pair is sometimes attributed to @higgs2021nba, whose Bayesian negative-binomial model reports
+home-advantage parameters on the log scale and contains no such figures; it is Ganz & Allsop's.)
+Their regression estimates, instrumented with maximum allowable capacity, are +1.74 points per
+additional 1,000 fans (SE 0.69) and, uninstrumented, +4.53 points for fans allowed against none
+(SE 2.07); similar effects for arenas allowing 1–3,000 fans (4.3) and over 3,000 (5.1) point to
+presence rather than size. No team was permitted even half of capacity in 2020–21.
+
+Our descriptive NBA numbers are **`{python} sgn(desc_nba_margin_pooled, 2)` with fans and `{python} sgn(desc_nba_margin_treated, 2)` in the restricted season**, a raw drop
+of `{python} num(desc_nba_margin_pooled - desc_nba_margin_treated, 2)` points, set beside their raw 1.69
+(their 2020–21 difference, not a causal estimate). Their with- and without-fans figures both come
+from 2020–21 games; ours compare normal seasons
+against a restricted season that mixed empty and partial-crowd games (`{python} pct(lit_nba_zero_share, 1)` of treated
+games at zero dose), so the two drops are not like-for-like. Our descriptive data are not
+inconsistent with theirs. What differs is our *modeled* estimate:
+`{python} sgn(lit_nba_margin["coef"], 2)` points per unit of crowd dose, with a 95% interval of
+`{python} civ(lit_nba_margin["ci_low"], lit_nba_margin["ci_high"], 2)`.
+
+Their units are not ours (fans present within a sparse 2020–21 crowd, against empty-to-full dose
+across seasons), so 1.69 does not convert into our units directly. Their own evidence favors a
+*presence* effect, so we map their +4.53 presence estimate through our dose data on that basis,
+proxying fans allowed by fans attended: a presence effect moves a game only if any fans attended, true of `{python} pct(lit_nba_presence_control, 1)` of our
+full-crowd-season NBA games and `{python} pct(lit_nba_presence_treated, 1)` of 2021 games, while
+mean dose fell from `{python} num(lit_nba_control_mean, 2)` to `{python} num(lit_nba_treated_mean, 2)`.
+The implied coefficient in our specification (`{python} num(GANZ_FE_PRESENCE, 3)` times the
+control-minus-treated presence share, divided by the control-minus-treated dose) is
+**`{python} sgn(lit_nba_implied, 2)`**, at the upper edge of our interval. Ganz & Allsop drop
+Indiana, Miami and Sacramento for reporting zero attendance after their arenas reopened; we null
+reporting zeros after reopening for every team, those three included (@sec-data), which drops the
+games from this calculation. Counting
+the `{python} lit_nba_null_n` nulled 2021 games as fans-present gives
+`{python} sgn(lit_nba_implied_nullpresent, 2)`, still in the upper part of our interval. Their 95% interval
+(`{python} num(GANZ_FE_PRESENCE, 3)` ± 1.96 × `{python} num(GANZ_FE_PRESENCE_SE, 3)`) maps the same
+way to `{python} civ(lit_nba_implied_ci_low, lit_nba_implied_ci_high, 2)`, which overlaps ours; our
+point estimate is about a third of theirs (`{python} pct(lit_nba_implied_ratio, 0)`). Our power to
+detect `{python} num(lit_nba_implied, 2)` points, at our NBA margin standard error of
+`{python} num(_lit_nba_margin_se, 4)`, is `{python} pct(lit_nba_implied_power, 0)`. Two assumptions
+carry this mapping: that Ganz & Allsop's effect is one of presence rather than size, and that a
+2020–21 crowd effect generalizes to full-crowd seasons.
+
+No such mapping is attempted for the football studies (draws break the binary outcome and a 3-1-0
+points system is not a win probability) nor for @higgs2021nba, whose log-scale parameters have no
+published translation. Where a conversion cannot be made honestly, the comparison is left
+unmade.
+
+## Mechanism versus outcome: the NHL case
+
+```{python}
+#| label: lit-nhl-vars
+#| include: false
+lit_nhl_hfa = pick(noise, sport="nhl", outcome="home_margin")["hfa"]
+lit_nhl_sd_raw = _prep(_nhl_raw)["home_margin"].std(ddof=1)
+lit_nhl_mde = 2.8 * pick(twfe_all, sport="nhl", outcome="home_margin", sample="pooled")["se"]
+
+lit_nfl_margin_over_hfa = (pick(twfe_all, sport="nfl", outcome="home_margin", sample="pooled")["coef"]
+                            / pick(noise, sport="nfl", outcome="home_margin")["hfa"])
+lit_nfl_win_over_hfa = (pick(twfe_all, sport="nfl", outcome="home_win", sample="pooled")["coef"]
+                         / pick(noise, sport="nfl", outcome="home_win")["hfa"])
+```
+
+@plosone_nhl_penalties is the closest published work to our NHL result and could be read as
+"fan absence removes NHL home advantage". Read precisely, it measures something narrower. Across
+three independent samples (NHL playoffs 2015–2020, NHL regular season 2019–2021, and CHL regular
+season 2019–2021), away teams received significantly more penalties than home teams **when crowds
+were present**, and no significant difference appeared when crowds were absent, with the Home × Crowd
+interaction significant in all three (b = .186, p = .024; b = .101, p = .010; b = .095, p = .018).
+The paper analyzes **penalty calls only**. It does not analyze goals, margins or wins, and it makes
+no claim that the penalty differential translated into home victories.
+
+The two results are therefore compatible, at the level each study measures. Their finding is at
+the *mechanism* level; ours is at the *outcome* level. A referee-bias channel can switch off
+without moving win probability detectably, for two reasons that both apply here. The channel is
+small relative to outcome noise: NHL home advantage in our data is `{python} num(lit_nhl_hfa, 3)` goals per game against a
+per-game margin standard deviation of `{python} num(lit_nhl_sd_raw, 2)` goals, and our NHL margin MDE per unit of crowd dose of `{python} num(lit_nhl_mde, 3)` goals exceeds
+the entire home advantage. And penalties are one channel among several; travel, familiarity, last
+line change and rest are not crowd channels: they do not depend on who is in the arena.
+
+To state it as precisely as we can: *our NHL outcome result is consistent with Guérette et al.
+(2021) at the level each study measures. Their mechanism finding stands, and we do not test it.*
+
+The same distinction cuts the other way in basketball, which is why we do not present referee bias
+as the established explanation: @gong2022nbafouls finds *no* crowd effect on NBA referee home bias,
+while @ganz2024nbafans finds a large crowd effect on NBA outcomes. Mechanism findings and outcome
+findings need not track each other.
+
+## What this comparison does and does not license
+
+It does **not** license "our data contradict the published literature". They do not; our NBA
+interval reaches the one published estimate we can map into our units, at its upper edge.
+
+It does **not** license any statement of the form "the pooled interval rules out effects larger
+than X", for the reasons in @sec-pool.
+
+It does **not** license reading low cross-league heterogeneity as evidence of a common effect. At
+$k = `{python} len(SPORTS)`$ the heterogeneity test has no power, and @sec-mlb gives substantive reasons to expect the
+true effects to *differ* by league.
+
+And no league's estimate should be described as a clean null. Each is **underpowered, and none is
+distinguishable from zero, which is a different thing**: the NFL's point estimate is comparable to
+its entire home advantage, at `{python} pct(lit_nfl_margin_over_hfa, 0)` of it on margin and
+`{python} pct(lit_nfl_win_over_hfa, 0)` on win probability, per unit of crowd dose.
+
+# Limitations {#sec-limits}
+
+```{python}
+#| label: limits-vars
+#| include: false
+# count regular-season games only -- flagged playoff games are excluded as playoffs anyway.
+_nhl_reg = _nhl_raw[~_nhl_raw["is_playoff"].fillna(False)]
+_nyi_relocated = _nhl_reg[(_nhl_reg["home_team"] == "NYI") & _nhl_reg["season"].isin([2019, 2020, 2021])
+                          & _nhl_reg["relocated_home"].fillna(False) & ~_nhl_reg["is_bubble"].fillna(False)]
+lim_nyi_relocated_n = len(_nyi_relocated)
+lim_nyi_relocated_pct = lim_nyi_relocated_n / len(_nhl_reg)
+assert set(_nyi_relocated["season"]) == {2019, 2020}, "NYI relocated flag now fires outside the two split seasons; reword sec-limits"
+# ESPN labels the Islanders' 2020-21 regular-season home games Barclays Center; every one was played at
+# Nassau Coliseum (NHL.com, 2020-09-30), so they carry Barclays' empirical capacity, not Nassau's.
+_nyi21 = _nhl_raw[(_nhl_raw["home_team"] == "NYI") & (_nhl_raw["season"] == 2021)]
+_nyi21_bk = _nyi21[(_nyi21["venue"] == "Barclays Center") & ~_nyi21["is_playoff"].fillna(False)]
+lim_nyi21_mislabeled_n = len(_nyi21_bk)
+lim_nyi21_cap_ratio = _nyi21.loc[_nyi21["venue"].str.startswith("Nassau"), "capacity"].max() / _nyi21_bk["capacity"].max()
+lim_nyi21_dose_mean = _nyi21_bk["crowd_pct"].mean()
+
+# Data-imperfection residual, restated after the 2026-09-16 reopening fix:
+# zeros still kept real inside a treated season but dated after the home team's own first
+# non-zero game that season. Post-fix, every one of these is a *sourced* re-closure (config
+# `reclosures`), not an unverified ambiguity -- check that live rather than asserting it away.
+from src.models.twfe import _exclusion_mask
+lim_zero_late = 0
+lim_zero_late_covered = 0
+for _s in SPORTS:
+    _p = pd.read_parquet(ROOT / "data" / "processed" / f"{_s}.parquet")
+    _p = _p[_p["season"].isin(TREATED[_s]) & ~_exclusion_mask(_p)]
+    _first_fans = _p[_p["attendance"] > 0].groupby(["season", "home_team"])["date"].min()
+    _z = _p[(_p["attendance"] == 0) & _p["crowd_pct"].notna()]
+    _z_first = pd.Series(list(zip(_z["season"], _z["home_team"])), index=_z.index).map(_first_fans)
+    _late = _z[_z["date"] > _z_first]
+    lim_zero_late += len(_late)
+    _late_day = pd.to_datetime(_late["date"]).dt.normalize()
+    for _idx, _row in _late.iterrows():
+        _day = _late_day.loc[_idx]
+        lim_zero_late_covered += int(any(
+            rc["team"] == _row["home_team"] and pd.Timestamp(rc["start"]) <= _day <= pd.Timestamp(rc["end"])
+            for rc in _sports_cfg[_s]["reclosures"]))
+assert lim_zero_late_covered == lim_zero_late, \
+    "residual late-zero games are no longer all inside a sourced re-closure; reword the Limitations paragraph"
+```
+
+**The identifying assumption is not testable here.** Our coefficient is the crowd effect plus any
+other 2020–21 league-wide home-specific shift, and no within-model separation exists
+(@sec-assumption). We investigated the bubbles as a way to break the two apart, and @sec-bubble
+reports why they do not.
+
+**The design has `{python} words(intro_n_seasons)` season-level assignments and a randomization-inference p-value floor of
+`{python} num(res_ri_floor_min, 3)`** (@sec-ri). Nothing in the panel can change that, and @sec-floor shows that adding seasons
+would not make it decisive.
+
+**The treatment is measured, not assigned.** The design specifies policy capacity caps; the code
+measures realized attendance over empirical capacity. These coincide where caps bind and diverge
+where they do not, which is what produces the MLB overlap problem of @sec-mlb. A study built
+directly on published per-venue policy caps would identify a cleaner treatment; we did not have
+one at per-game resolution across `{python} words(len(SPORTS))` leagues.
+
+**Capacity is empirical, so a normal season is not dose 1.0**, and per-unit coefficients therefore
+extrapolate beyond support (about `{python} times(res_mlb_extrapolation, 1)` for MLB's headline, whose normal-season dose averages well
+below one). Separately, because 2021 NHL dose never reaches half of capacity, the NHL within-season
+regression extrapolates about `{python} times(rob_within_nhl_extrap, 1)` (@sec-nhl). Every ratio in this paper names its scaling
+basis for this reason.
+
+**Five known data imperfections are documented and not fixed.** The New York Islanders split home
+games between two arenas in 2018–19 and 2019–20, so `{python} thou(lim_nyi_relocated_n)` regular-season games are flagged as relocated and excluded.
+This is a false positive against the flag's intent, retained because it is `{python} pct(lim_nyi_relocated_pct, 1)` of regular-season games and the exclusion
+is conservative. In 2020–21 the Islanders played every home game at Nassau Coliseum, but ESPN labels
+their `{python} thou(lim_nyi21_mislabeled_n)` regular-season home games Barclays Center, so those games take Barclays' empirical
+capacity rather than Nassau's and their crowd dose is recorded at about
+`{python} num(lim_nyi21_cap_ratio, 2)` of its true value, for one team in one treated season at a mean dose of `{python} num(lim_nyi21_dose_mean, 2)`. Three NHL outdoor games carry a null venue in the source data; all three are
+neutral-site and excluded, so no estimate is affected. Finally, the reopening rule of @sec-data still
+leaves two residuals we could not close: Detroit's first-fans date is kept at its more heavily
+sourced 2021-03-10 game over a single fan account describing earlier January attendance, a judgment
+call rather than a settled fact (@sec-zero); and a game where ESPN reports a wrong *non-zero*
+attendance count for a team that had not actually reopened would set that team's first-fans date too
+early, which we did not check exhaustively against a source. Neither residual includes the
+`{python} lim_zero_late` modeled games that still report zero attendance after their home team's own
+first non-zero game that season. Every one of those falls inside a sourced re-closure (@sec-data)
+and is confirmed real.
+
+**Attendance is announced, not turnstile.** This is a property of ESPN's data and of the other
+public sources we checked, and the empirical-capacity denominator is a response to it rather than a solution.
+
+**The study was not pre-registered** (@sec-intro). The specification was changed once, after its
+first real-data run, and has not been re-specified since. The main post-hoc additions
+belong to one of three declared classes: outcome-blind by construction (the dose-overlap analysis
+reads only crowd dose and season), exhaustive and mechanical (leave-one-season-out), or against our
+own interest (the noise-floor decomposition, which makes our inference worse). The NHL trend,
+season-fixed-effects and within-season diagnostics (@sec-nhl) were added during review rather than
+pre-committed, and are reported whichever way they came out. The zero-attendance correction of
+@sec-data is outcome-blind in how it was found (an audit of attendance counts) and in its rule
+(game dates against documented restriction windows), with one qualification: one MLB-only
+diagnostic fit (both outcomes) was seen before the rule was written. One declared exception remains. The
+reopening-zeros data correction of @sec-data is not outcome-blind; @sec-zero reports its
+largest shift and `reopen_zero_sensitivity.csv` holds every cell both ways. This discipline is not a public
+timestamp, and we do not present it as one.
+
+# Conclusion
+
+```{python}
+#| label: concl-vars
+#| include: false
+concl_winprob = {s: pick(twfe_all, sport=s, outcome="home_win", sample="pooled")["coef"] for s in SPORTS}
+concl_margin = {"nfl": desc_nfl_margin_pooled, "nba": desc_nba_margin_pooled,
+                "nhl": desc_nhl_margin_pooled, "mlb": desc_mlb_margin_pooled}
+concl_winpct_pp = {s: pick(desc, sport=s, season="pooled_fullcrowd")["home_win_pct"] * 100 - 50 for s in SPORTS}
+concl_n_hfa_games = int(desc[desc["season"] == "pooled_fullcrowd"]["n_games"].sum())
+concl_mlb_margin_se = pick(desc, sport="mlb", season="pooled_fullcrowd")["home_margin_se"]
+assert abs(concl_margin["mlb"]) < concl_mlb_margin_se, "MLB margin no longer within one SE of zero; reword the conclusion"
+# genuine between-season variation is measurable (uncensored) only in the NFL and NBA, every cell.
+_cens = noise.assign(c=noise["sd_true_censored"].astype(bool))
+assert set(_cens.loc[~_cens["c"], "sport"]) == {"nfl", "nba"} and set(_cens.loc[_cens["c"], "sport"]) == {"mlb", "nhl"}, \
+    "sd_true censoring pattern changed; reword the conclusion's NFL/NBA clause"
+concl_nfl_win_no2018 = pick(loso, sport="nfl", outcome="home_win", dropped_season=2018)["coef"]
+concl_n_games = sum(len(pd.read_parquet(ROOT / "data" / "processed" / f"{s}.parquet", columns=["sport"]))
+                     for s in SPORTS)
+```
+
+Home-field advantage in the full-crowd regular seasons of 2018–2023 (`{python} thou(concl_n_hfa_games)` games of a `{python} thou(concl_n_games)`-game panel) is `{python} sgn(concl_winpct_pp["nfl"], 1)` percentage points
+of win probability in the NFL, `{python} sgn(concl_winpct_pp["nba"], 1)` in the NBA, `{python} sgn(concl_winpct_pp["nhl"], 1)` in the NHL and `{python} sgn(concl_winpct_pp["mlb"], 1)` in MLB, corresponding to
+`{python} sgn(concl_margin["nfl"], 2)` points, `{python} sgn(concl_margin["nba"], 2)` points, `{python} sgn(concl_margin["nhl"], 2)` goals and `{python} sgn(concl_margin["mlb"], 2)` runs of scoring margin (MLB's within one standard error of zero).
+
+The crowd-attributable slice of that advantage, estimated off the 2020–21 attendance
+restrictions, comes back at `{python} sgn(concl_winprob["nfl"], 3)` (NFL), `{python} sgn(concl_winprob["nba"], 3)` (NBA), `{python} sgn(concl_winprob["nhl"], 3)` (NHL) and `{python} sgn(concl_winprob["mlb"], 3)` (MLB) per unit of
+crowd dose on the win-probability scale, with every interval crossing zero, and with two co-primary estimators
+(adjusted dose-response and raw comparative interrupted time series) agreeing in sign on
+`{python} words(res_coh_sign_agree)` of eight cells and, once the dose-response estimate is scaled by each
+league's dose gap, differing in magnitude by `{python} pct(res_coh_gap_min, 1)` to `{python} pct(res_coh_gap_max, 0)` on those (@sec-results).
+
+**We do not conclude that crowds do not matter.** We conclude something narrower and, we think,
+more useful:
+
+> In all `{python} words(intro_mde_gt1_count)` league × outcome cells, the effect this design could detect at 80% power is
+> larger than the entire home-field advantage of that league, the smallest (`{python} intro_min_ratio_label`) by
+> `{python} pct(intro_mde_min_ratio - 1, 0)`.
+> (That ratio is per unit of crowd dose; rescaled to each league's normal-season dose, three cells
+> fall to approximately one or below.) `{python} words(len(SPORTS)).capitalize()` estimates, each individually underpowered and none
+> distinguishable from zero, which is not the same as near zero: the NFL's is nearly its whole home
+> advantage per unit of crowd dose (`{python} pct(lit_nfl_win_over_hfa, 0)` on win probability), and falls to
+> `{python} sgn(concl_nfl_win_no2018, 3)` without its 2018 season (@sec-loso). In
+> the one league where a published estimate can be mapped into our units, it sits at the upper
+> edge of our interval. A shared, unmeasured 2020–21 home-specific confound remains, and pooling does not reduce it. The
+> claim this study can defend is that it **cannot distinguish zero from a crowd effect accounting
+> for all of home-field advantage** under randomization inference, where no p-value this design can produce falls below
+> `{python} dot(res_ri_floor_min)`. The team-clustered intervals do exclude a full-advantage effect in
+> `{python} words(intro_excl_count)` cells (`{python} intro_excl_cells_str`). The NBA's does not hold against the
+> season-level noise floor (@sec-floor); MLB win probability is the one cell where the data lean against a
+> crowd effect that large, on an assumption that baseball's 2020 rule changes make least safe (@sec-mlb).
+
+The NHL adds one supporting illustration rather than a finding of its own: within 2021, raw means
+favor games with fans while the team-fixed-effects dose coefficient points the other way
+(@sec-nhl). One league, on a fit confounded with calendar time, does not establish a general
+pattern, and MLB shows no comparable reversal. The NHL illustration is consistent, though, with the between-season
+design we adopted, and paid for in power.
+
+Two further findings are, we would argue, the paper's more durable contributions.
+
+**Ordinary season-to-season variation in home advantage exceeds the pandemic signal.** In every
+cell at least one ordinary season deviates further from trend than the restricted season does,
+though genuine between-season variation, as distinct from sampling noise, is measurable only in the
+NFL and NBA (@tbl-floor). In NFL home margin it is `{python} num(res_noise_nfl_sd_true, 2)` points against a total home advantage of `{python} num(res_noise_nfl_hfa, 2)`;
+the NFL's 2018 season deviates further from trend, in the opposite direction, than its restricted
+2020 season does. Any future study identifying a crowd effect off a single season-level
+shock inherits this problem, and should confront it before reporting a clustered p-value over
+game-level observations.
+
+**More seasons would not have fixed this.** The two binding variance components (the treated
+season's own sampling error and real between-season variation in home advantage) do not shrink as
+control seasons are added. On that season-level basis, not per unit of crowd dose, the smallest
+detectable effect exceeds the entire home advantage in `{python} words(intro_floor_count)` of eight cells (@sec-floor).
+The constraint is not sample size; the pandemic happened once.
+
+# References {.unnumbered}
+
+::: {#refs}
+:::

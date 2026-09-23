@@ -83,21 +83,23 @@ longer belongs in a `docs/` file with a row in the map above.
 **Phases 1–8 complete; the paper is done.** 179/179 tests. All four loaders build validated panels;
 features populate `data/processed/`; descriptive HFA is quantified with a sanity gate; 6a (TWFE
 dose-response) and 6b (on/off before-after) both estimate the crowd effect per sport; 23 CSVs in
-`results/tables/` back every number the paper cites. Committed through Phase 8 (`77abb84`); `paper/` stays gitignored.
+`results/tables/` back every number the paper cites. Committed through Phase 8 (`77abb84`).
 
 **The paper:** `paper/hfa.qmd` → `paper/hfa.pdf` + `paper/hfa.html` (28 pp; `paper/references.bib`, 20
-entries, all primary-verified). Everything in `paper/` except `references.bib` is gitignored until the user
-publishes (`.gitignore` `/paper/*`), including the gate tools `check_paper.py`/`drift.py`, `number-ledger.md`,
-and the frozen, hash-pinned first draft `paper/draft/hfa-draft.qmd`; so are the phase 8 spec/plan.
+entries, all primary-verified). Publish prep (2026-09-22): `.gitignore` now whitelists only `hfa.qmd`,
+`hfa.pdf`, `references.bib` in `paper/`, and all of `results/` (the qmd reads `results/tables/pre_*/` snapshots
+no pipeline step regenerates). Still local-only: `hfa.html`, the gate tools `check_paper.py`/`drift.py`,
+`number-ledger.md`, `voice-profile.md`, the frozen first draft `paper/draft/`, and the phase 8 spec/plan.
+Render: `cd paper && QUARTO_PYTHON=../.venv/bin/python quarto render hfa.qmd`.
 Polish stages A–E closed 2026-09-22 (numbers wired live, claim audit, two mid-stage data fixes, citation
 verification, voice pass, whole-paper review, final gates): `docs/phase-log.md` "Phase 8 wrap-up"; ledger
-`.superpowers/sdd/phase8-polish/progress.md` (keep it). User sign-off was a rendering skim; a full read
-before publishing is still worth doing. Before editing the paper, read `docs/paper-writing-guide.md`
+`.superpowers/sdd/phase8-polish/progress.md` (keep it). User sign-off was a rendering skim; the paper was
+published 2026-09-22 without a full read-through. Before editing the paper, read `docs/paper-writing-guide.md`
 (tools, number rule, bans). Docs have no number gate: re-sweep them after any table regeneration.
 
-**⬅ Next:** the user's publish decision (whether/where; lift the gitignore then), then delete the ESPN
-caches below. One open user call: the last line "The constraint is not sample size; the pandemic
-happened once." stays unqualified by default (reviewers flagged it as strong).
+**⬅ Next:** paper, summary (`docs/summary.md`) and `results/` are committed and pushed (2026-09-22);
+delete the ESPN caches below. Settled 2026-09-22: the last line "The constraint is not sample size; the pandemic
+happened once." stays as written (user declined "the number of seasons"); don't re-raise it.
 
 **Headline (pooled win-probability LPM):** nfl **+0.050** · nba **+0.006** · nhl **+0.011** ·
 mlb **−0.021** (post reopening-zeros fix, 2026-09-16; was +0.044/+0.016/+0.007/−0.021). Every

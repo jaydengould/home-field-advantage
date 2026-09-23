@@ -22,12 +22,8 @@ data/interim/*
 data/processed/*
 !data/processed/.gitkeep
 
-# Results — regenerated from code
-results/figures/*
-!results/figures/.gitkeep
-!results/figures/twfe_crowd_effect.png
-results/tables/*
-!results/tables/.gitkeep
+# Results are committed: the paper cites these CSVs, and results/tables/pre_*/ are
+# archived snapshots of superseded runs that no pipeline step can regenerate.
 
 # Quarto render output
 /_site/
@@ -45,8 +41,10 @@ Thumbs.db
 .vscode/
 *.swp
 
-# Paper work-in-progress — local only until the user publishes it
+# Paper: publish source, bibliography and PDF; keep review tooling and drafts local
 /paper/*
+!/paper/hfa.qmd
+!/paper/hfa.pdf
 !/paper/references.bib
 /docs/superpowers/specs/*phase8-paper*
 /docs/superpowers/plans/*phase8-paper*
