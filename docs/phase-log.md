@@ -26,11 +26,8 @@ design spec is not a build script; do not plan the whole project at once.
 | Docs number sweep | 2026-09-18 | Task 0 after the reopening-zeros fix. Every number in README, CLAUDE and `docs/*.md` mapped to its exact CSV cell or recomputed from `data/processed/` (dose means, σ, spread sensitivity, correlations). 43 fixes across 8 files. README was a pre-zero-fix snapshot: "seven of eight" → all eight, headline, NHL 6a/6b agreement, dose overlap, LOSO. Also fixed: design-decisions/CLAUDE "NHL inflates ~12×" → ~8×; the "every team was sourced" forking-path sentence → 29 sourced / 15 data-only / none unverified; stale treated dose means, LOSO 0.55→0.58 SE, NBA MDE 7.19→7.50, MLB MDE 4.37→4.36. Not re-verified (no CSV, not recomputed): NYI dual-arena ±0.003, two-way-clustered SE 0.44–0.77×, bubble placebo figures, Elo accuracies. No code or table changed. |
 | B.G5 fix round 2 | 2026-09-18 | N1 re-evaluated on post-reopening-fix data: the Ganz presence mapping is +2.61 (nulled games dropped) / +2.42 (counted as fans-present), 90–95% up our NBA interval; live clause + assert band on both variants. M5: NHL within-2021 margin CI [−3.20, −0.09], p = .039, disclosed as the only within-season fit below .05, assert-guarded; it is team-clustered (the "game-clustered" label was wrong in docs). Minors m1–m5 + reviewer new-m3/xref fixed. Re-review CLOSED (0 C/0 I). Gate: render clean on `hfa` kernel, paper 8/8, tests 179, tables 23/23, drift fully traced. Docs: Ganz raw-mean framing corrected in literature-review/paper-writing-guide/results/README. |
 | B.G6 | 2026-09-18 | Claim audit of sec-limits + conclusion: 36 rows, 13 not supported — the conclusion restated claims G1–G5 had corrected in the body. User approved all 5 escalations: "all centred near zero / none able to exclude NFL-sized" replaced (MLB win CI excludes it; NFL ≈96% of its HFA per unit, +0.013 without 2018); ceiling stated under RI with the two team-clustered exceptions; season-level floor sentence added; "one declared exception" (reopening-zeros correction) to the post-hoc classes; NHL/MLB sign-reversal demoted from durable contribution to a one-league illustration (MLB shows none; 4 of 8 cells). Verifier CLOSED. Gate green. |
-
 | B.S (Stage B close) | 2026-09-21 | Whole-paper sweeps + content checklist, 2 verifier rounds. Game→team-clustered; RI "no trend" → linear trend; British spellings → 0; within-2021 NHL no longer "exogenous" (E1). NYI 2020–21 ESPN venue mislabel (28 games on Barclays capacity, dose ≈0.88 of true) disclosed, not fixed (E2). tbl-within shows all four leagues (was NHL+MLB while prose counted eight). tbl-main gains (b) CIs; caption no longer calls (b) per-unit. **Units error fixed:** (a)/(b) coherence now compares (b) with (a) × dose gap — NFL close (−7.6%/+5.7%), NBA/MLB far apart; old "(b) smaller in NFL, as expected from raw vs adjusted" was false. Audit trail `.superpowers/sdd/phase8-polish/stage-b-S-*.md`. |
-
-**⬅ Next: Phase 8 Stage D0** (voice profile), on user say-so. Start from the phase8
-ledger's final "RESUME HERE" block (2026-09-21, post-C2). See `docs/paper-writing-guide.md`.
+| 8 — Quarto write-up | 2026-09-22 | First draft (`paper/draft/hfa-draft.qmd`, frozen, hash-pinned), then polish stages A–E on the working copy `paper/hfa.qmd` → `hfa.pdf` / `hfa.html`. Both gitignored until the user publishes. Stage sections below; wrap-up at the end of this file. |
 
 ## Phase 7 extras worth knowing
 
@@ -66,7 +63,7 @@ a CVD floor regression guard over all 6 pairs; and a cross-module equality test 
 `SPORT_COLORS` and `MARKERS`. `_delta_e_cvd`'s Machado-2009 matrices are copied verbatim from the
 dataviz skill's bundled validator — the skill lives outside the repo, so they stay in lockstep by hand.
 
-## Phase 8 stage B — claim audit (in progress)
+## Phase 8 stage B — claim audit (closed 2026-09-21)
 
 Every top-level section gets an independent claim audit (opus), a controller triage that
 re-verifies each load-bearing number from the current CSVs, one batched user escalation, a fixer,
@@ -122,3 +119,71 @@ now duplicate `test_espn.py`. `fetch_summary` would AttributeError if ESPN emitt
 `"gameInfo": null` (it doesn't). `plot_slope`'s legend swatches inherit the first-sorted sport's
 colour instead of neutral gray — the hollow/filled shape still reads; fix only if that figure is
 touched. `load()` lacks type annotations in a couple of loaders.
+
+### Phase 8 stage D — humanize (2026-09-22)
+
+D0 wrote `paper/voice-profile.md` (gitignored): spec §8 rules verbatim + the user's own intro rewrite,
+extracted from the PDF, with a stale-facts note extended past the plan's two items ("centred near zero",
+"seven of eight", "comfortably contains it") so rewriters take voice from the sample and never claims.
+
+D.G1–D.G6 each ran rewriter → controller gates → fresh meaning reviewer → controller fixes → user checkpoint.
+Claims compared across the six groups: G1 front+intro, G2 111, G3 46, G4 110, G5 (21 changed line-pairs,
+10 sources), G6 51 — every one `kept`, none added, dropped or re-weighted. Em dashes went to zero in prose
+paper-wide (the survivors are chunk captions, Python strings and comments). Every ratio kept its basis word,
+so the units trap stayed shut. Blocking rows fixed: G1 an abstract "then" that implied a false inference;
+G2 the deleted "and the distinction is not cosmetic". Zero attribution drift on all ten cited sources.
+
+User-approved content fixes taken alongside the voice pass: travel dropped from the intro's "largely
+persisted" list (it contradicted "travel … changed too"); the abstract's duplicate RI-floor sentence merged;
+the doubleheader definition moved from a chunk comment into prose; MLB playoff hosting corrected for the
+post-2022 Wild Card round (web-verified, higher seed hosts all three); the crowd-dose mega-paragraph split;
+`# Results` given a bridging line; the sec-ri heading's hardcoded "six" made computed; a dead variable dropped;
+the NFL headline estimate given an `@sec-power` pointer; `assert lg_bubble_seed_n == 88` added behind a typed
+caption; Schank named as the unrefereed null; Saiegh & Wong's own 2SLS disclaimer carried; and the conclusion
+reordered so it ends on "the pandemic happened once" instead of the demoted NHL illustration.
+
+### Phase 8 stage E1 — whole-paper review (2026-09-22, closed)
+
+Two fresh reviewers (hiring reader, methodologist: 2 blocking, 7 major, 20 minor); controller verified every serious
+claim against the spec files and CSVs before triage (`.superpowers/sdd/phase8-polish/e-triage.md`). Batch 1
+(controller, wording user-approved verbatim): M1 spec-change disclosure in §1/§4.2/§9; M2 MLB win probability admitted
+as the one cell leaning against a full-advantage effect, NBA's exclusion discounted by the noise floor, the unsupported
+RI dismissal removed from abstract/intro/conclusion; abstract gains the plain-words why (treatment assigned to seasons;
+an untreated season beats the treated one in every cell) and the 52.8–57.0% descriptive range; six-of-eight power count
+paired with four-of-eight rescaled; "RI worse / do not extend" corrected; NHL "four pre-committed diagnostics",
+"confirms", "this is the lesson" corrected. Figure titles fixed ("HFA shrinks…", "TWFE") and redrawn from CSVs. Batch 2
+(fixer agent): M10–M29 + hiring items, three headings reworded (IDs kept), and the user's request to cut half the
+"not X, it's Y" contrasts (90 found, 40 protected, 22 claim-bearing kept, 28 cut). Fresh meaning reviewer: one blocking
+row ("design we chose before seeing results" contradicted M1 → "we adopted"), plus a body home for the MLB/NBA claim in
+sec-floor with the clamped-floor lower-bound caveat. Nine new asserts. Gates: suite 179, paper tests 8, tables 23 OK,
+draft untouched, drift CLEAN with `stage-e-B1-allow.txt` / `stage-e-B2-allow.txt`.
+
+### Phase 8 stage E2 — final mechanical gates (2026-09-22, closed)
+
+Suite 179, paper tests 8, tables 23/23, draft hash OK, PDF/HTML/plain render exit 0 with only known noise. Margin check
+by ink extent on all 28 pages (poppler `-bbox` crashes on this PDF): every page inside 1 in, so no table overflows.
+Whole-paper drift, first draft → final (`e-drift.txt`, 1100 un-allowed): the 725 number/cite tokens were split across
+the 58-snapshot chain and each attributed to the stage hop that moved it, 0 unattributed, with a hop → trace-record map
+(`e-drift-annotated.txt`). Rendered numbers in the B/ZA/RZ hops come from pinned CSVs and were never token-ledgered by
+design; typed prose digits are gated by `check_paper.py::test_no_unledgered_numbers`. User sign-off: a skim confirming
+rendering; content sign-off is the cumulative D-group checkpoints and E1 approvals.
+
+## Phase 8 wrap-up
+
+- **Draft** (2026-09-14): one session → `paper/draft/hfa-draft.qmd`, frozen as the drift baseline.
+- **A — numbers wired live.** Typed numbers → inline `{python}` expressions over the CSVs (159 by A's close);
+  `paper/check_paper.py` (unledgered-number, abstract and literature-citation tests), `paper/drift.py`,
+  `paper/number-ledger.md`; render kernel pinned to the venv (`jupyter: hfa`). Two typed digits were wrong
+  (.048 → .047, −0.70 → −0.69) and four spelled counts ("seven" → "eight" of eight cells).
+- **B — claim audit**, G1–G6 + B.S (above). Two data fixes were inserted mid-stage: zero-attendance (2026-09-15) and
+  reopening-zeros (2026-09-16/17), which moved the headline to nfl +0.050 · nba +0.006 · nhl +0.011 · mlb −0.021.
+- **C — citations** primary-verified; bib 12 → 20; Wikipedia gone; Farnell's NFL null carried.
+- **D — voice**: six rewrite groups, every claim kept, zero attribution drift.
+- **E1 — whole-paper review**: spec-change disclosure, MLB win admitted as the one cell against a full effect.
+- **E2 — gates** (above). Next: the user's publish decision, then ESPN cache deletion.
+- **E3 — docs** (2026-09-22): this wrap-up, CLAUDE.md Status, paper-writing-guide tools section, pitfalls, and a
+  targeted README sweep (the 2026-09-18 sweep's unverified items + post-sweep paper fixes). README's "un-flagging the 39
+  NYI dual-arena games moves [NHL win%] by 0.003" was wrong twice: 31 regular-season games, and the move is **0.0003**
+  (margin 0.003; both ≤ 0.02 SE) once travel is filled in. Un-flagging alone moves nothing, because `add_travel` nulls
+  travel on relocated rows and the fit drops them listwise. Also "game-clustered" → team-clustered (p = .039), Status,
+  the Phase 8 row, 22 → 23 tables. "482 of 952 empty" re-verified (all 2021 games incl. playoffs).

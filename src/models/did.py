@@ -91,7 +91,7 @@ def plot_slope(results: pd.DataFrame) -> plt.Figure:
         plt.Line2D([], [], marker="o", ls="", color="gray", label="with fans"),
     ]
     axes[0][0].legend(handles=legend_handles, loc="best", fontsize=8)
-    fig.suptitle("HFA shrinks when the crowd leaves (raw before/after)")
+    fig.suptitle("Home advantage, full-crowd vs. restricted seasons (raw before/after)")
     fig.tight_layout()
     return fig
 

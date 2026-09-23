@@ -142,7 +142,10 @@ identified between-season.
 nba 1.11×/1.02×, nhl 1.33×/1.71×.)
 
 **A crowd effect accounting for 100% of home-field advantage would go undetected at 80% power in
-all eight cells; the smallest ratio (NBA win%) is 1.06×.**
+all eight cells; the smallest ratio (NBA win%) is 1.06×.** At the stricter bar (power < 0.5, i.e. MDE ÷ HFA >
+2.8/1.96 ≈ 1.43) it goes undetected more likely than not in **6 of 8** cells per unit and **4 of 8** rescaled
+(nfl both, mlb margin, nhl win). NHL margin sits on the line (power .49 per unit, .56 rescaled). Inline in the
+paper as `intro_power_lt_half_count` / `intro_power_lt_half_rescaled_count` (E1, 2026-09-22).
 
 ⚠️ **This is not robust to rescaling, and saying so is mandatory.** The coefficient is per unit
 `crowd_pct` and no sport's data spans a full unit. Control-season mean dose is nfl **.97** ·
@@ -315,8 +318,11 @@ a correction).
   in HFA. **NFL's `sd_true` is 1.73 margin points — essentially the whole of its 1.75 HFA.**
   `ratio_floor = 2.8·hypot(both) ÷ HFA` is ≥ 1.0 in 7 of 8 cells (nfl 3.23×/3.77× · mlb
   5.96×/**0.88×** · nba 1.29×/1.29× · nhl 1.13×/1.46×). **Would more seasons buy significance? No**
-  — and it likely worsens RI (more seasons lowers the 1/k floor but enlarges the reference
-  distribution 2020 must beat). **Recommendation on record: do not extend the panel.**
+  — but it would not *worsen* RI either (corrected E1 M9: with exchangeable seasons the expected RI p is
+  (1+nq)/(1+n), which falls in n toward q). It just cannot make RI decisive, because an untreated season
+  already deviates further than the treated one in every cell. **Recommendation on record: extending the
+  panel is not worth its cost.** MLB win (0.88×) is the one cell below 1.0, and its `sd_true` is clamped
+  (†), so that 0.88× is a lower bound, not a measurement.
 - ⚠️ `floor_over_naive` is 1.00–2.17: admitting season-level shocks makes honest inference
   **worse** than the shipped clustered SE. `mde_floor ≥ mde_naive` always, by construction.
 - `sd_true_censored` (mlb both, nhl both) marks cells where observed spread fell below average
@@ -358,6 +364,13 @@ implied crowd effect is **negative**.
 > **pooling does not reduce it.** The claim this study can defend is that it cannot distinguish
 > zero from a crowd effect accounting for all of HFA under randomization inference (floor .167; the
 > team-clustered CIs exclude it for MLB and NBA win); it is *not* evidence that crowds don't matter.
+> **Those two exclusions are not symmetric (E1, 2026-09-22).** NBA win's does not survive the season-level noise
+> floor (ratio 0.90× → 1.29×). MLB win is the one cell where the data lean against a full-advantage crowd effect
+> (floor 0.88×, a lower bound since clamped); discount it only for the 2020 rule changes (which push HFA toward
+> the home team, dragging the coefficient negative) and 2021 dose overlap. Randomization inference does NOT show
+> those intervals overstate precision: it only tests the zero null. Never say it does.
 
 **This study was NOT pre-registered.** The internal pre-commitment discipline is not a public
-timestamp. Complete disclosure is what substitutes for it — say so plainly.
+timestamp. **And the 6a spec was NOT frozen before estimation:** it was written with two-way FE, the first
+real-data run returned all 12 coefficients negative (3 sports × 2 outcomes × 2 samples), and it was changed once
+to team FE + trend. Frozen since; the NHL was added under the frozen spec. The paper discloses this (E1 M1). Complete disclosure is what substitutes for it — say so plainly.

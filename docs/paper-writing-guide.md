@@ -5,6 +5,22 @@ prose. Findings and their framing live in `docs/results.md`; literature in
 `docs/literature-review.md` (§§1–5 can be lifted directly — re-verified against the CSVs
 and `data/processed/` 2026-09-18; re-check after any table regeneration).
 
+## Editing the paper — tools and the number rule
+
+- **Every number in prose is an inline `{python}` expression over a CSV, or has a row in
+  `paper/number-ledger.md`** naming its source. `paper/check_paper.py` enforces it
+  (`test_no_unledgered_numbers`; the YAML abstract via `test_abstract_numbers`); run it from
+  `paper/` with `../.venv/bin/pytest check_paper.py test_tools.py -q`. Captions cannot run inline
+  code: caption numbers are scanned and need a ledger row, go stale silently when tables are
+  regenerated, and load-bearing ones get an `assert` in a chunk (e.g. `lg_bubble_seed_n == 88`).
+- **Drift:** `paper/drift.py <before.qmd> <before.txt> <after.qmd> <after.txt>` diffs numbers,
+  citations, cross-refs, labels and inline expressions between two renders (`--only`, `--allow`).
+  The `.txt` is `quarto render hfa.qmd --to plain --wrap=none`, which drops the abstract. Snapshot
+  first; every diff must trace to an approved change.
+- **Voice:** `paper/voice-profile.md` (gitignored) holds the prose rules and the user's own sample.
+  Take voice from it, never claims (its stale-facts note lists what the sample gets wrong).
+- Render with `QUARTO_PYTHON=../.venv/bin/python quarto render hfa.qmd` from `paper/`.
+
 ## Language bans — earlier drafts violated all four
 
 1. **Never call any sport's result a "clean null" or an "independent null replication."**
@@ -15,8 +31,11 @@ and `data/processed/` 2026-09-18; re-check after any table regeneration).
 3. **Never read absence of heterogeneity as evidence of homogeneity.** At k=4 the Q test has
    no power, and I² fell mechanically because NHL landed near the pooled mean. (The MLB
    argument in this project says the true effects are *not* common.)
-4. **Never re-specify the frozen 6a model.** It was pre-committed and every number in
-   `results/tables/` is byte-verified against it.
+4. **Never re-specify the frozen 6a model.** It was changed once, after its first real-data run
+   (two-way FE → team FE + trend), and frozen since; every number in `results/tables/` is
+   byte-verified against it. **Never write "frozen before estimation"**: the paper discloses the
+   change (E1 M1). And never say randomization inference shows an interval overstates precision:
+   RI here tests only the zero null (E1 M2).
 
 Also: **do not write "monotonic"** about the NHL HFA drift (2 of 5 steps are up), and **do not
 lead with p-values** — under randomization inference the design's floor is .167, so

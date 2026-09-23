@@ -16,6 +16,16 @@ number. Update this file when a new one bites. Keep it to things that recurred o
   `mde_floor <= mde_current` — backwards, and it silently compared two different scaling bases.
   The fix was deleting the mixed-basis column, not patching the assertion.
 
+- **An audit that marks a provenance claim "supported" must open the provenance record.** "The specification was
+  frozen before estimation" passed two claim audits (B.G1, B.G6) and four voice passes. It was false: the 6a spec
+  file records the switch from two-way FE after the first run returned all twelve coefficients negative. A fresh
+  methodologist caught it at E1 by reading `docs/superpowers/specs/`. Same class: "four diagnostics were
+  pre-committed" (only one was). Claims about *process* need the spec/plan file, not the paper's own text.
+- **A reason offered for discounting an inconvenient result needs its own evidence.** "Randomization inference shows
+  those intervals to overstate precision" sat in the abstract, intro and conclusion; RI there only tests the zero
+  null and cannot show any interval is too narrow, and for MLB win the noise floor showed no inflation at all. The
+  sentence existed to protect the headline. When a result cuts against the thesis, check the dismissal hardest.
+
 ## Scaling and sign conventions
 
 - **The units trap** (three separate confusions so far): per-unit-`crowd_pct` coefficients vs
@@ -43,6 +53,10 @@ number. Update this file when a new one bites. Keep it to things that recurred o
 - **Statistics computed on excluded games are not results.** NHL's "richest within-season dose
   variation" selling point was measured on playoff games that no model ever sees. In the actual
   estimation sample the range is 0 → 0.400 with p99 at 0.288.
+- **Flipping an exclusion flag is a no-op unless flag-dependent features are recomputed.** `add_travel`
+  writes NaN travel on `relocated_home`/`neutral_site` rows, so un-flagging them in a sensitivity leaves them
+  listwise-dropped and the coefficient identical to 15 digits. That reads as "perfectly robust". Check that `n_obs`
+  moved before quoting any exclusion sensitivity (README's NYI "0.003" was 10× off for this family of reasons).
 - **Filter on `is_bubble`, never `neutral_site`** — 58 of 130 NHL bubble games are not flagged
   neutral.
 
@@ -86,6 +100,12 @@ don't add it.
   in a `.qmd` chunk — import `src`.
 - **The number-drift check is digits-only.** Spelled counts ("seven of eight") that become live
   can change words without tripping it; diff rendered text word-by-word against the baseline too.
+- **A whole-phase drift cannot be "annotated line by line" across a data regeneration.** E2's
+  first-draft → final diff was 713 number tokens, most of them CSV regeneration (the two zero fixes)
+  flowing through inline expressions, which no fix id covers. What works: split the diff across the
+  snapshot chain (each token → the hop that moved it, then hop → that stage's trace record), and gate
+  the only unprotected class, typed prose digits, with `test_no_unledgered_numbers`. Don't report a
+  plan step as done in its literal wording when it was met by a different, stated method.
 - **Inline `{python}` inside `$…$` math breaks on decimals and `{,}`** (Quarto escapes `14.42` →
   `14\.42`); bare integers work (`$k = `{python} len(SPORTS)`$`).
 - **A validated-looking zero can be a reporting artifact.** "`crowd_pct == 0` is real" held for two
@@ -144,3 +164,17 @@ don't add it.
   0.44–0.77), "roughly fifty times" (true max 38), "four times larger" (true 12.5). Each survived
   because the surrounding sentence was plausible. When a claim quotes a ratio, recompute the ratio
   and name its numerator and denominator — do not check only that the direction is right.
+- **A gate that prints CLEAN may not be watching the thing you changed.** Two cases hit in one
+  session (stage D, 2026-09-22). (1) `quarto render --to plain` DROPS the YAML abstract, so
+  `paper/drift.py`'s `numbers` key never sees abstract numbers: a CLEAN drift after an abstract edit
+  proves nothing about it. The abstract's cover is `check_paper.py::test_abstract_numbers`, which
+  recomputes each printed number from source. (2) A probe written to test drift.py itself
+  (`sed -i '' '0,/re/s//repl/'`, BSD sed) silently replaced nothing, and the resulting CLEAN read as
+  "the gate is fine". Before trusting a gate on an edit it has never been shown to catch, inject a
+  known-bad value and confirm the gate FAILS — then check the injection actually landed (`grep -c`).
+- **Voice-pass agents delete assertions, not just flourishes.** A humanizer rewriter cut "and the
+  distinction is not cosmetic" (empirical vs seated capacity) and "Mechanism findings and outcome
+  findings do not reliably track each other" as staged closers. The first was a claim and had to be
+  restored; the second was a true echo of the byte-identical sentence above it and was fine to cut.
+  The claim-table reviewer is what separates the two, so never run a rewriter without one, and read
+  the flagged row against the surrounding text yourself rather than taking either agent's verdict.

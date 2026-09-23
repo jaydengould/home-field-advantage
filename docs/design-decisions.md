@@ -71,7 +71,8 @@ re-litigate one, read the reasoning here first. Full original design:
   weather are NFL-only, so they are a separate NFL sensitivity check — never main-model.
 - **Exclusions (shared by 6a and 6b via `twfe._exclusion_mask`):**
   `neutral_site | relocated_home | is_bubble | is_playoff`. SEs clustered by `home_team`.
-- **⚠️ Team FE only + a linear `season_trend` — NOT two-way FE.** The COVID crowd shock is
+- **⚠️ Team FE only + a linear `season_trend` — NOT two-way FE.** (Adopted AFTER the first real-data run of
+  the originally two-way spec; see the 6a spec L31–45. The paper discloses this timing in §1, §4.2, §9 — E1 M1.) The COVID crowd shock is
   ~a pure season-level treatment (`crowd_pct` ≈ .97 every normal season, ≈ .07 in the treated
   one), so full season FE are near-collinear with `crowd_pct` and absorb the between-season
   contrast that *is* the natural experiment. Two-way FE inverts NFL and NBA (NFL margin
@@ -169,3 +170,44 @@ Recorded because sport selection must be defensible as outcome-blind — NHL was
   `results/tables/reopen_zero_sensitivity.csv`, so a reader can see exactly what looking at the
   estimate first bought.
 
+
+## Paper voice, and what a voice pass may not touch (2026-09-22, stage D)
+
+`paper/voice-profile.md` (gitignored, like the rest of `paper/`) is the authority for prose voice: spec §8's
+rules plus the user's own rewrite of the introduction as a sample. It sits BELOW the CSVs, the writing guide and
+the results docs in the order of authority, and above the humanizer skill's generic rules. Its sample is a voice
+source only — its facts predate stage B and several are now wrong, which the file says at the top.
+
+Settled in stage D, because each came up as a rewriter judgment call:
+- **A claim is not a flourish.** "The distinction is not cosmetic", "the difference is material" and similar
+  assertions stay, even when they read as editorializing. What may go is an echo: a sentence that restates a
+  claim made verbatim beside it.
+- **Block-quote claims are frozen in wording, not in punctuation.** A voice pass may turn an em dash inside the
+  ceiling quote into a comma, and may change nothing else in it.
+- **Captions are out of scope for voice** (they carry numbers and are checked elsewhere), so a caption keeps its
+  em dashes. A count TYPED into a caption gets an assert beside the computation instead, since captions sit
+  outside both the rewrite scope and the live-assert net: `assert lg_bubble_seed_n == 88`.
+- **A heading may state its section's finding** in plain declarative form. De-claiming a heading purely to make
+  it descriptive ("Pooling does not tighten the answer" → "Pooling across the four leagues") loses signposting.
+- **The full ceiling statement stays in sec-power** even though spec §8 reserves it for abstract/intro/conclusion.
+  It carries three inline expressions, compressing it would move numbers, and it is the sentence that section
+  builds to. User-approved deviation, 2026-09-22.
+- **The conclusion ends on the ceiling**, not on the NHL illustration that B.G6 demoted. Moving that paragraph
+  above the two durable findings required one claim-neutral rewording ("rather than a third finding" → "rather
+  than a finding of its own"), since it no longer follows them.
+
+## Final-review framing corrections (2026-09-22, stage E1)
+
+Two claims the paper made for weeks were false and survived stages A–D; both are now corrected and must not creep back.
+- **Spec history is disclosed, not "frozen before estimation".** The 6a spec changed once, after its first run. The
+  paper says so wherever it describes its pre-commitment discipline. The NHL (added later under the frozen spec) is the
+  genuinely out-of-sample test of that discipline, and only its travel diagnostic was pre-committed; trend, season-FE
+  and within-season NHL analyses were added in review.
+- **MLB win probability is the exception to the ceiling, stated plainly.** The paper no longer waves off the two
+  excluding team-clustered intervals with randomization inference. NBA win's is discounted by the season-level noise
+  floor; MLB win's is kept as the one cell leaning against a full-advantage effect, discounted only by the 2020 rule
+  changes and 2021 dose overlap, with the clamped floor named as a lower bound (sec-floor). Asserts in the intro chunk
+  break the render if the data stop saying this.
+- **"Not X, it's Y" contrasts:** the user asked for half cut. Kept are those carrying a claim or caveat (thesis line,
+  scaling-basis contrasts, language-ban negations, "not a corroboration of their finding"). Do not cut further without
+  asking.

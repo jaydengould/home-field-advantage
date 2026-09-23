@@ -153,7 +153,7 @@ def plot_effect(results: pd.DataFrame) -> plt.Figure:
         ax.axvline(0, ls="--", color="gray", lw=1)
         ax.set_title(outcome)
         ax.set_xlabel("crowd_pct coefficient (empty→full)")
-    fig.suptitle("Crowd effect on home advantage (TWFE, 95% CI)")
+    fig.suptitle("Crowd effect on home advantage (team FE + linear trend, 95% CI)")
     fig.tight_layout()
     return fig
 

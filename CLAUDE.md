@@ -34,7 +34,8 @@ Read a file when the work needs it — don't preload.
 3. **`results/tables/*.csv` is authoritative over every markdown file in this repo**, including
    this one. Any number the paper cites comes from a CSV or a `.qmd` chunk. Where prose and CSV
    disagree, the CSV wins and the prose is what's stale.
-4. **The frozen 6a specification does not get re-specified.** It was pre-committed and every
+4. **The frozen 6a specification does not get re-specified.** It was changed once, after its first
+   real-data run (two-way FE → team FE + trend; disclosed in the paper), and frozen since; every
    number in `results/tables/` is byte-verified against it. Add sensitivity columns beside it.
 
 ## Project-specific facts that are easy to get wrong
@@ -79,43 +80,31 @@ longer belongs in a `docs/` file with a row in the map above.
 
 ## Status
 
-**Phases 1–7 complete, plus NHL as a fourth sport and a pre-write-up audit.** 179/179 tests. All
-four loaders build validated panels; features populate `data/processed/`; descriptive HFA is
-quantified with a sanity gate; 6a (TWFE dose-response) and 6b (on/off before-after) both estimate
-the crowd effect per sport; 22 CSVs in `results/tables/` cover every number the paper cites; the
-literature positioning and `paper/references.bib` exist. Uncommitted, awaiting human commit.
+**Phases 1–8 complete; the paper is done.** 179/179 tests. All four loaders build validated panels;
+features populate `data/processed/`; descriptive HFA is quantified with a sanity gate; 6a (TWFE
+dose-response) and 6b (on/off before-after) both estimate the crowd effect per sport; 23 CSVs in
+`results/tables/` back every number the paper cites. Uncommitted, awaiting human commit.
 
-**⬅ IN PROGRESS — Phase 8 polish (stages A–E).** First draft done (`paper/draft/hfa-draft.qmd`, frozen);
-working copy `paper/hfa.qmd` (gitignored). Resume from the ledger's "RESUME HERE" block:
-`.superpowers/sdd/phase8-polish/progress.md`. Spec/plan: `docs/superpowers/{specs,plans}/2026-09-14-phase8-paper-polish*`.
-B.G1–B.G4 done. **Zero-attendance data fix done** (2026-09-15, `docs/superpowers/{specs,plans}/2026-09-15-zero-attendance-fix*`;
-119 ESPN zero artifacts → null dose; 23 duplicate MLB rows removed; originals in `results/tables/pre_dedup/`).
-**B.G5 complete (2026-09-18).** Round 1 incl. the Ganz & Allsop primary-source correction (Q9);
-its N1 exposed the reopening-zeros data bug, fixed 2026-09-16/17 (`docs/superpowers/{specs,plans}/2026-09-16-reopening-zeros-fix*`;
-44-team audit, zero unverified). Round 2: N1 (Ganz mapping +2.61, +2.42 counting nulled games as
-present, both assert-guarded at the upper edge) and M5 (NHL within-2021 team-clustered CI excludes
-zero, wrong sign, disclosed with assert). Re-review CLOSED; gate green. Docs number sweep also done
-2026-09-18 (43 fixes + Ganz framing). Docs have no number gate — re-sweep after any table regeneration.
-**B.G6 complete (2026-09-18)** — conclusion corrected to the body (NHL/MLB reversal demoted to a one-league
-illustration; "centred near zero" and "none able to exclude NFL-sized" removed). **B.S complete — Stage B CLOSED
-(2026-09-21):** sweeps + checklist; notable: (a)/(b) coherence now compares (b) with (a) × dose gap (was a units error),
-tbl-within shows all four leagues, NYI 2020–21 ESPN venue mislabel disclosed. **C1 complete (2026-09-21)** — all
-citations primary-verified; bib 12 → 18; Wikipedia gone; Gong → home bias; MLB officiating sentence rewritten
-(Saiegh & Wong 2026: umpire bias rises with occupancy, small). **C2 complete — Stage C CLOSED (2026-09-21):**
-bib 18 → 20 (Farnell 2023 NFL: crowds do NOT affect visiting false starts; McMahon & Quintanar 2024 NCAA); Saiegh
-added to sec-lit. **Next: Stage D0** (voice profile), on user say-so; start from the phase8 ledger's final
-"RESUME HERE" block (2026-09-21, post-C2).
+**The paper:** `paper/hfa.qmd` → `paper/hfa.pdf` + `paper/hfa.html` (28 pp; `paper/references.bib`, 20
+entries, all primary-verified). Everything in `paper/` except `references.bib` is gitignored until the user
+publishes (`.gitignore` `/paper/*`), including the gate tools `check_paper.py`/`drift.py`, `number-ledger.md`,
+and the frozen, hash-pinned first draft `paper/draft/hfa-draft.qmd`; so are the phase 8 spec/plan.
+Polish stages A–E closed 2026-09-22 (numbers wired live, claim audit, two mid-stage data fixes, citation
+verification, voice pass, whole-paper review, final gates): `docs/phase-log.md` "Phase 8 wrap-up"; ledger
+`.superpowers/sdd/phase8-polish/progress.md` (keep it). User sign-off was a rendering skim; a full read
+before publishing is still worth doing. Before editing the paper, read `docs/paper-writing-guide.md`
+(tools, number rule, bans). Docs have no number gate: re-sweep them after any table regeneration.
 
-**Phase 8: Quarto write-up → PDF + HTML.** Every *estimator* the paper needs exists.
-**Two tables must be computed inline** (neither has a CSV): the descriptive playoff-HFA table via
-`summarize(panel, playoffs=True)`, and the NBA bubble decomposition + seeding placebo. Read
-`docs/paper-writing-guide.md` first — the audit changed Phase 8's framing, not its estimates.
+**⬅ Next:** the user's publish decision (whether/where; lift the gitignore then), then delete the ESPN
+caches below. One open user call: the last line "The constraint is not sample size; the pandemic
+happened once." stays unqualified by default (reviewers flagged it as strong).
 
 **Headline (pooled win-probability LPM):** nfl **+0.050** · nba **+0.006** · nhl **+0.011** ·
 mlb **−0.021** (post reopening-zeros fix, 2026-09-16; was +0.044/+0.016/+0.007/−0.021). Every
 per-sport CI crosses zero. But the finding is a **ceiling, not a null**: in all eight sport ×
 outcome cells the per-unit effect detectable at 80% power exceeds that sport's entire home
-advantage (three fall to ≈1 or below once rescaled). Full statement and its caveats: `docs/results.md`.
+advantage (three fall to ≈1 or below once rescaled). On the season-level noise floor it is 7 of 8: **MLB win is the
+exception** (0.88×, a lower bound), and the paper says so. Full statement and its caveats: `docs/results.md`.
 
 **After the write-up:** delete the ESPN caches (`data/raw/*/espn`, ~23GB) once the parquets are
 verified — gitignored and local-only, so only do this near project end to avoid re-pull risk.
