@@ -108,9 +108,11 @@ from OT/shootout ones.
   unlucky game can't abort a 3000-game pull. `_fetch_scoreboard` stays **fail-loud** — a lost
   date is unaccounted data loss.
 - A cold `[2018, 2023]` MLB pull takes **hours** and may need a couple of runs to fully warm.
-- Caches are gitignored and local-only (~14GB MLB + ~6GB NBA + ~3GB NHL). A fresh clone
-  re-fetches. Don't `git clean -fdx` them away. Deleting them is a deliberate end-of-project
-  step, after the parquets are verified.
+- Caches are gitignored and local-only (19.0 GiB total: MLB 12G, NBA 3.1G, NHL 3.1G, NFL 798M). A fresh
+  clone re-fetches. **Archived 2026-09-22:** compressed to `~/hfa-espn-cache.tar.zst` (726 MiB, 36,855
+  files, integrity-tested) and the `data/raw/*/espn` originals deleted. Keep the archive: ESPN's
+  endpoints are unofficial, so a re-pull may not reproduce the published tables. Restore from the repo
+  root with `zstd -dc ~/hfa-espn-cache.tar.zst | tar -xf -`.
 
 ## Built panels (measured)
 

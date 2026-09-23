@@ -203,3 +203,7 @@ rendering; content sign-off is the cumulative D-group checkpoints and E1 approva
 - **Summary for outside readers** (2026-09-22): `docs/summary.md` (~900 words), linked from the README. Numbers copied
   from the rendered paper; spot-checked against `twfe_cross_sport.csv` and `noise_floor.csv`. No number gate: re-sweep it
   after any table regeneration.
+- **Raw-cache archive** (2026-09-22): re-ran descriptive/twfe/did/sensitivity from the parquets; `results/` byte-identical
+  to `65d0b4d`. ESPN caches (19.0 GiB, 36,855 files) compressed to `~/hfa-espn-cache.tar.zst` (726 MiB, `zstd -t` OK,
+  file count matched), then the user deleted `data/raw/*/espn`. Compressed rather than deleted because the endpoints are
+  unofficial: a re-pull may not reproduce the published numbers.

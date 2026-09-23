@@ -97,8 +97,8 @@ verification, voice pass, whole-paper review, final gates): `docs/phase-log.md` 
 published 2026-09-22 without a full read-through. Before editing the paper, read `docs/paper-writing-guide.md`
 (tools, number rule, bans). Docs have no number gate: re-sweep them after any table regeneration.
 
-**⬅ Next:** paper, summary (`docs/summary.md`) and `results/` are committed and pushed (2026-09-22);
-delete the ESPN caches below. Settled 2026-09-22: the last line "The constraint is not sample size; the pandemic
+**Project closed (2026-09-22).** Paper, summary (`docs/summary.md`) and `results/` are committed and pushed;
+the raw caches are archived (below). Settled 2026-09-22: the last line "The constraint is not sample size; the pandemic
 happened once." stays as written (user declined "the number of seasons"); don't re-raise it.
 
 **Headline (pooled win-probability LPM):** nfl **+0.050** · nba **+0.006** · nhl **+0.011** ·
@@ -108,5 +108,7 @@ outcome cells the per-unit effect detectable at 80% power exceeds that sport's e
 advantage (three fall to ≈1 or below once rescaled). On the season-level noise floor it is 7 of 8: **MLB win is the
 exception** (0.88×, a lower bound), and the paper says so. Full statement and its caveats: `docs/results.md`.
 
-**After the write-up:** delete the ESPN caches (`data/raw/*/espn`, ~23GB) once the parquets are
-verified — gitignored and local-only, so only do this near project end to avoid re-pull risk.
+**Raw data:** the ESPN caches were compressed to `~/hfa-espn-cache.tar.zst` (726 MiB, 36,855 files, `zstd -t` passed)
+and the originals in `data/raw/*/espn` deleted (2026-09-22), after a full re-run from the parquets reproduced
+every committed table byte for byte. Restore from the repo root: `zstd -dc ~/hfa-espn-cache.tar.zst | tar -xf -`.
+The parquets in `data/interim`/`data/processed` are now the only uncompressed copy: don't delete them.
