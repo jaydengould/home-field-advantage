@@ -25,6 +25,7 @@ data/processed/*
 # Results — regenerated from code
 results/figures/*
 !results/figures/.gitkeep
+!results/figures/twfe_crowd_effect.png
 results/tables/*
 !results/tables/.gitkeep
 

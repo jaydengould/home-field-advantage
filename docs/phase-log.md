@@ -187,3 +187,8 @@ rendering; content sign-off is the cumulative D-group checkpoints and E1 approva
   (margin 0.003; both ≤ 0.02 SE) once travel is filled in. Un-flagging alone moves nothing, because `add_travel` nulls
   travel on relocated rows and the fit drops them listwise. Also "game-clustered" → team-clustered (p = .039), Status,
   the Phase 8 row, 22 → 23 tables. "482 of 952 empty" re-verified (all 2021 games incl. playoffs).
+- **README rewrite** (2026-09-22): 367 → ~100 lines, written for portfolio readers. Build history, the roadmap and
+  phase jargon were cut (this log already holds them). Numbers now come from `twfe_cross_sport.csv` and
+  `descriptive_hfa.csv`, and the ceiling wording follows the paper abstract (per-unit basis named, with the rescaled
+  caveat). The NFL leave-2018-out caveat is kept. `.gitignore` now un-ignores `results/figures/twfe_crowd_effect.png`
+  so the README can embed it.
