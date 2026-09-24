@@ -106,8 +106,8 @@ tests/
 
 ## Built with Claude Code
 
-This project was built with [Claude Code](https://claude.com/claude-code) and wrote most of the code and drafted the paper's prose. I set the research question and
-design, made the methodological calls, and reviewed the results.
+This project was built with [Claude Code](https://claude.com/claude-code), which wrote most of the code and drafted the
+paper's prose. I set the research question and design, made the methodological calls, and reviewed the results.
 
 ## License
 
