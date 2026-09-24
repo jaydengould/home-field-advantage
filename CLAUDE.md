@@ -17,7 +17,6 @@ Read a file when the work needs it — don't preload.
 | `docs/design-decisions.md` | Touching the schema, features, or either estimator. Every settled "why it's built this way", including the frozen 6a specification and the identifying assumption. |
 | `docs/data-pipeline.md` | Touching `src/data/` or `src/features/`, or interpreting `crowd_pct`. ESPN sourcing, empirical capacity, per-sport edge cases, known data imperfections. |
 | `docs/results.md` | You need a number or a finding. Narrative index over `results/tables/`. |
-| `docs/paper-writing-guide.md` | Writing any prose for the paper. Language bans, framing, content checklist, citation corrections, the units trap. |
 | `docs/agent-pitfalls.md` | Before claiming a verification, quoting a coefficient, or adding a post-hoc analysis. Mistakes that actually happened here. |
 | `docs/phase-log.md` | You need build history, what a phase shipped, or a deferred minor. |
 | `docs/literature-review.md` | Positioning results against published work. §§1–5 are paper-ready. |
@@ -85,21 +84,12 @@ features populate `data/processed/`; descriptive HFA is quantified with a sanity
 dose-response) and 6b (on/off before-after) both estimate the crowd effect per sport; 23 CSVs in
 `results/tables/` back every number the paper cites. Committed through Phase 8 (`77abb84`).
 
-**The paper:** `paper/hfa.qmd` → `paper/hfa.pdf` + `paper/hfa.html` (28 pp; `paper/references.bib`, 20
-entries, all primary-verified). Publish prep (2026-09-22): `.gitignore` now whitelists only `hfa.qmd`,
-`hfa.pdf`, `references.bib` in `paper/`, and all of `results/` (the qmd reads `results/tables/pre_*/` snapshots
-no pipeline step regenerates). Still local-only: `hfa.html`, the gate tools `check_paper.py`/`drift.py`,
-`number-ledger.md`, `voice-profile.md`, the frozen first draft `paper/draft/`, and the phase 8 spec/plan.
-Render: `cd paper && QUARTO_PYTHON=../.venv/bin/python quarto render hfa.qmd`.
-Polish stages A–E closed 2026-09-22 (numbers wired live, claim audit, two mid-stage data fixes, citation
-verification, voice pass, whole-paper review, final gates): `docs/phase-log.md` "Phase 8 wrap-up"; ledger
-`.superpowers/sdd/phase8-polish/progress.md` (keep it). User sign-off was a rendering skim; the paper was
-published 2026-09-22 without a full read-through. Before editing the paper, read `docs/paper-writing-guide.md`
-(tools, number rule, bans). Docs have no number gate: re-sweep them after any table regeneration.
+**The paper:** `paper/hfa.qmd` → `paper/hfa.pdf` (28 pp; `paper/references.bib`, 20 entries, all
+primary-verified). Render: `cd paper && QUARTO_PYTHON=../.venv/bin/python quarto render hfa.qmd`.
+Docs have no number gate: re-sweep them after any table regeneration.
 
 **Project closed (2026-09-22).** Paper, summary (`docs/summary.md`) and `results/` are committed and pushed;
-the raw caches are archived (below). Settled 2026-09-22: the last line "The constraint is not sample size; the pandemic
-happened once." stays as written (user declined "the number of seasons"); don't re-raise it.
+the raw caches are archived (below).
 
 **Headline (pooled win-probability LPM):** nfl **+0.050** · nba **+0.006** · nhl **+0.011** ·
 mlb **−0.021** (post reopening-zeros fix, 2026-09-16; was +0.044/+0.016/+0.007/−0.021). Every

@@ -48,3 +48,5 @@ Thumbs.db
 !/paper/references.bib
 /docs/superpowers/specs/*phase8-paper*
 /docs/superpowers/plans/*phase8-paper*
+/docs/paper-writing-guide.md
+/CLAUDE.local.md
